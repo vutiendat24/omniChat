@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.omnichat.conversation.dto.ConversationDto;
 import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
+import com.omnichat.conversation.dto.SendMessageRequest;
 import com.omnichat.conversation.entity.Conversation;
 import com.omnichat.conversation.entity.Message;
 import com.omnichat.conversation.producer.ConversationEventProducer;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -171,6 +173,59 @@ public class ConversationService {
                         .totalItems(messagePage.getTotalElements())
                         .build())
                 .build();
+    }
+
+    /**
+     * Task 3.3.2.1 - POST /conversations/{id}/messages
+     * Agent sends a message into a conversation.
+     * Validation: at least content_text or content_attachments must be present.
+     */
+    @Transactional
+    public MessageDto sendAgentMessage(String conversationId, SendMessageRequest request, String agentId) {
+        // 1. Validate request body (anyOf: content_text or content_attachments)
+        if (!request.isValid()) {
+            throw new IllegalArgumentException("At least one of content_text or content_attachments is required");
+        }
+
+        // 2. Verify conversation exists
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                        "Conversation not found: " + conversationId));
+
+        // 3. Serialize attachments to JSON string
+        String attachmentsJson = null;
+        if (request.getContentAttachments() != null && !request.getContentAttachments().isEmpty()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                attachmentsJson = mapper.writeValueAsString(request.getContentAttachments());
+            } catch (Exception e) {
+                log.error("Failed to serialize attachments", e);
+            }
+        }
+
+        // 4. Create and save message
+        Message message = Message.builder()
+                .id(UUID.randomUUID().toString())
+                .conversationId(conversationId)
+                .senderType(Message.SenderType.AGENT)
+                .senderId(agentId)
+                .contentText(request.getContentText())
+                .contentAttachments(attachmentsJson)
+                .status(Message.MessageStatus.SENT)
+                .sentAt(LocalDateTime.now())
+                .build();
+        messageRepository.save(message);
+        log.info("Agent {} sent message {} in conversation {}", agentId, message.getId(), conversationId);
+
+        // 5. Update conversation last_activity_at
+        conversation.setLastActivityAt(LocalDateTime.now());
+        conversationRepository.save(conversation);
+
+        // 6. Publish event to Kafka for integration-service to deliver to external channel
+        conversationEventProducer.publishConversationMessageReceived(
+                conversationId, message.getId(), conversation.getStatus().name());
+
+        return MessageDto.fromEntity(message);
     }
 
     private String mapToEntityField(String apiField) {

@@ -3,13 +3,16 @@ package com.omnichat.conversation.controller;
 import com.omnichat.conversation.dto.ConversationDto;
 import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
+import com.omnichat.conversation.dto.SendMessageRequest;
 import com.omnichat.conversation.service.ConversationService;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -22,10 +25,6 @@ public class ConversationController {
     /**
      * Task 3.3.1.1 - GET /conversations
      * Supports pagination (page, limit), filtering (status), and sorting (sort with - prefix for DESC).
-     *
-     * Examples:
-     *   GET /api/v1/conversations?page=1&limit=20&status=OPEN&sort=-last_activity_at
-     *   GET /api/v1/conversations?page=2&limit=10&sort=created_at
      */
     @GetMapping
     public ResponseEntity<PaginatedResponse<ConversationDto>> getConversations(
@@ -41,9 +40,6 @@ public class ConversationController {
     /**
      * Task 3.3.1.2 - GET /conversations/{id}/messages
      * Returns paginated message history for a conversation, sorted by sent_at DESC (newest first).
-     *
-     * Examples:
-     *   GET /api/v1/conversations/abc-123/messages?page=1&limit=50
      */
     @GetMapping("/{id}/messages")
     public ResponseEntity<PaginatedResponse<MessageDto>> getMessages(
@@ -55,6 +51,26 @@ public class ConversationController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Task 3.3.2.1 - POST /conversations/{id}/messages
+     * Agent sends a new message into a conversation.
+     * Validation: at least content_text or content_attachments must be present.
+     *
+     * Note: agentId would normally come from the JWT token (SecurityContext).
+     * For now, it is passed as a request header for development convenience.
+     */
+    @PostMapping("/{id}/messages")
+    public ResponseEntity<MessageDto> sendMessage(
+            @PathVariable String id,
+            @Valid @RequestBody SendMessageRequest request,
+            @RequestHeader(value = "X-Agent-Id", defaultValue = "0") String agentId) {
+
+        MessageDto messageDto = conversationService.sendAgentMessage(id, request, agentId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(messageDto);
+    }
+
+    // --- Exception Handlers ---
+
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(EntityNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
@@ -64,5 +80,18 @@ public class ConversationController {
                 )
         ));
     }
-}
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", Map.of(
+                        "code", "VALIDATION_FAILED",
+                        "message", ex.getMessage(),
+                        "details", List.of(Map.of(
+                                "field", "content_text / content_attachments",
+                                "issue", ex.getMessage()
+                        ))
+                )
+        ));
+    }
+}
