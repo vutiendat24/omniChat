@@ -2,6 +2,7 @@ package com.omnichat.conversation.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.omnichat.conversation.dto.ConversationDto;
+import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
 import com.omnichat.conversation.entity.Conversation;
 import com.omnichat.conversation.entity.Message;
@@ -141,6 +142,33 @@ public class ConversationService {
                         .currentPage(page)
                         .totalPages(conversationPage.getTotalPages())
                         .totalItems(conversationPage.getTotalElements())
+                        .build())
+                .build();
+    }
+
+    /**
+     * Task 3.3.1.2 - GET /conversations/{id}/messages
+     * Returns paginated message history for a conversation, sorted by sent_at DESC (newest first).
+     */
+    @Transactional(readOnly = true)
+    public PaginatedResponse<MessageDto> getMessages(String conversationId, int page, int limit) {
+        // Verify conversation exists
+        if (!conversationRepository.existsById(conversationId)) {
+            throw new jakarta.persistence.EntityNotFoundException("Conversation not found: " + conversationId);
+        }
+
+        Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(limit, 100));
+
+        Page<Message> messagePage = messageRepository.findByConversationIdOrderBySentAtDesc(conversationId, pageable);
+
+        return PaginatedResponse.<MessageDto>builder()
+                .data(messagePage.getContent().stream()
+                        .map(MessageDto::fromEntity)
+                        .toList())
+                .meta(PaginatedResponse.Meta.builder()
+                        .currentPage(page)
+                        .totalPages(messagePage.getTotalPages())
+                        .totalItems(messagePage.getTotalElements())
                         .build())
                 .build();
     }
