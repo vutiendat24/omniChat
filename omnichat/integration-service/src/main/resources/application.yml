@@ -56,3 +56,9 @@ management:
   endpoint:
     health:
       show-details: always
+
+# Facebook App Configuration
+facebook:
+  app-secret: ${FACEBOOK_APP_SECRET:your-app-secret}
+  verify-token: ${FACEBOOK_VERIFY_TOKEN:your-verify-token}
+

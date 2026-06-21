@@ -99,7 +99,8 @@ public class ConversationService {
                     conversation.getId(), senderId, conversation.getChannelConnectionId());
         }
         conversationEventProducer.publishConversationMessageReceived(
-                conversation.getId(), message.getId(), conversation.getStatus().name());
+                conversation.getId(), message.getId(), conversation.getStatus().name(),
+                null, null, null); // Customer-originated: no outbound push needed
     }
 
     /**
@@ -223,7 +224,9 @@ public class ConversationService {
 
         // 6. Publish event to Kafka for integration-service to deliver to external channel
         conversationEventProducer.publishConversationMessageReceived(
-                conversationId, message.getId(), conversation.getStatus().name());
+                conversationId, message.getId(), conversation.getStatus().name(),
+                conversation.getChannelIdentityId(), conversation.getChannelConnectionId(),
+                request.getContentText());
 
         return MessageDto.fromEntity(message);
     }

@@ -36,14 +36,19 @@ public class ConversationEventProducer {
                 });
     }
 
-    public void publishConversationMessageReceived(String conversationId, String messageId, String status) {
-        Map<String, Object> event = Map.of(
-                "eventType", "conversation.message.received",
-                "conversationId", conversationId,
-                "messageId", messageId,
-                "conversationStatus", status,
-                "timestamp", LocalDateTime.now().toString()
-        );
+    public void publishConversationMessageReceived(
+            String conversationId, String messageId, String status,
+            String recipientExternalId, Long channelConnectionId, String messageText) {
+
+        java.util.HashMap<String, Object> event = new java.util.HashMap<>();
+        event.put("eventType", "conversation.message.received");
+        event.put("conversationId", conversationId);
+        event.put("messageId", messageId);
+        event.put("conversationStatus", status);
+        event.put("recipientExternalId", recipientExternalId != null ? recipientExternalId : "");
+        event.put("channelConnectionId", channelConnectionId != null ? channelConnectionId : 0L);
+        event.put("messageText", messageText != null ? messageText : "");
+        event.put("timestamp", LocalDateTime.now().toString());
 
         kafkaTemplate.send(TOPIC, conversationId, event)
                 .whenComplete((result, ex) -> {
