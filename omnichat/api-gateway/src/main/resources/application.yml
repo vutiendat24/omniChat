@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+jwt:
+  secret: a-very-secure-secret-key-that-is-at-least-32-bytes-long-for-hmac-sha-256
+  issuer: omnichat-auth-service
+  audience: omnichat-clients
+  expiration: 86400000
