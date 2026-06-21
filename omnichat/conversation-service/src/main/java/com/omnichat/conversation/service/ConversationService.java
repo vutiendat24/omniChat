@@ -231,6 +231,50 @@ public class ConversationService {
         return MessageDto.fromEntity(message);
     }
 
+    /**
+     * Task 3.4.1.1 - Handle RouteAssigned event from Routing Service.
+     *
+     * Called by RouteAssignedConsumer when the routing algorithm has selected an agent.
+     *
+     * Flow:
+     * 1. Find the conversation by ID (throw 404 if not found)
+     * 2. Update status: UNASSIGNED → OPEN
+     * 3. Set assignedAgentId to the selected agent
+     * 4. Update lastActivityAt
+     * 5. Persist to MySQL
+     * 6. Publish ConversationUpdated event (for WebSocket Service to push to Agent UI)
+     *
+     * @param conversationId the conversation to assign
+     * @param agentId the agent selected by the routing algorithm
+     */
+    @Transactional
+    public void handleRouteAssigned(String conversationId, Long agentId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                        "Conversation not found: " + conversationId));
+
+        // Guard: only assign if conversation is still UNASSIGNED
+        if (conversation.getStatus() != Conversation.ConversationStatus.UNASSIGNED) {
+            log.warn("Conversation {} is already in status {}, skipping assignment to agent {}",
+                    conversationId, conversation.getStatus(), agentId);
+            return;
+        }
+
+        // Update conversation: UNASSIGNED → OPEN, assign agent
+        Conversation.ConversationStatus oldStatus = conversation.getStatus();
+        conversation.setStatus(Conversation.ConversationStatus.OPEN);
+        conversation.setAssignedAgentId(agentId);
+        conversation.setLastActivityAt(LocalDateTime.now());
+
+        conversationRepository.save(conversation);
+        log.info("Conversation {} assigned to agent {}: {} → OPEN",
+                conversationId, agentId, oldStatus);
+
+        // Publish ConversationUpdated event for WebSocket Service (real-time push to Agent UI)
+        conversationEventProducer.publishConversationUpdated(
+                conversationId, agentId, "OPEN");
+    }
+
     private String mapToEntityField(String apiField) {
         return switch (apiField) {
             case "last_activity_at" -> "lastActivityAt";

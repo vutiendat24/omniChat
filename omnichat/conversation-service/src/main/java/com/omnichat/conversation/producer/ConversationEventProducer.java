@@ -59,4 +59,35 @@ public class ConversationEventProducer {
                     }
                 });
     }
+
+    /**
+     * Task 3.4.1.1 - Publish ConversationUpdated event after route assignment.
+     *
+     * Published when a conversation transitions from UNASSIGNED → OPEN with an assigned agent.
+     * Consumed by WebSocket Service (Task 6.2.1.1) to push real-time updates to Agent UI.
+     *
+     * @param conversationId the updated conversation
+     * @param assignedAgentId the agent now assigned to this conversation
+     * @param status the new conversation status (e.g., "OPEN")
+     */
+    public void publishConversationUpdated(String conversationId, Long assignedAgentId, String status) {
+        Map<String, Object> event = Map.of(
+                "eventType", "conversation.updated",
+                "conversationId", conversationId,
+                "assignedAgentId", assignedAgentId,
+                "status", status,
+                "timestamp", LocalDateTime.now().toString()
+        );
+
+        kafkaTemplate.send(TOPIC, conversationId, event)
+                .whenComplete((result, ex) -> {
+                    if (ex == null) {
+                        log.info("Published conversation.updated event: conversationId={}, agentId={}, status={}",
+                                conversationId, assignedAgentId, status);
+                    } else {
+                        log.error("Failed to publish conversation.updated event for conversationId={}",
+                                conversationId, ex);
+                    }
+                });
+    }
 }
