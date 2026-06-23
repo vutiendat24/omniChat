@@ -4,6 +4,7 @@ import com.omnichat.conversation.dto.ConversationDto;
 import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
 import com.omnichat.conversation.dto.SendMessageRequest;
+import com.omnichat.conversation.dto.TransferRequest;
 import com.omnichat.conversation.service.ConversationService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -69,6 +70,39 @@ public class ConversationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(messageDto);
     }
 
+    /**
+     * UC-303 - Manual conversation transfer / assignment.
+     *
+     * PATCH /api/v1/conversations/{id}/assign
+     *
+     * Per API_Specification_OCM.md §1:
+     *   Gán/Điều hướng thủ công hội thoại cho một Agent.
+     *
+     * Per PRD §3.3 UC-303:
+     *   Agent/Supervisor selects a target Agent → optionally enters a transfer reason
+     *   → system transfers ownership to the new Agent.
+     *
+     * Request body:
+     * {
+     *   "targetAgentId": 2,
+     *   "reason": "Chuyển cho chuyên viên kỹ thuật"   // optional
+     * }
+     *
+     * Response: 200 OK with updated ConversationDto
+     *
+     * Note: requestingAgentId would normally come from the JWT token (SecurityContext).
+     * For now, it is passed as a request header for development convenience.
+     */
+    @PatchMapping("/{id}/assign")
+    public ResponseEntity<ConversationDto> transferConversation(
+            @PathVariable String id,
+            @RequestBody TransferRequest request,
+            @RequestHeader(value = "X-Agent-Id", defaultValue = "0") String requestingAgentId) {
+
+        ConversationDto result = conversationService.transferConversation(id, request, requestingAgentId);
+        return ResponseEntity.ok(result);
+    }
+
     // --- Exception Handlers ---
 
     @ExceptionHandler(EntityNotFoundException.class)
@@ -88,10 +122,21 @@ public class ConversationController {
                         "code", "VALIDATION_FAILED",
                         "message", ex.getMessage(),
                         "details", List.of(Map.of(
-                                "field", "content_text / content_attachments",
+                                "field", "targetAgentId",
                                 "issue", ex.getMessage()
                         ))
                 )
         ));
     }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", Map.of(
+                        "code", "INVALID_STATE",
+                        "message", ex.getMessage()
+                )
+        ));
+    }
 }
+

@@ -5,25 +5,19 @@ spring:
   application:
     name: websocket-service
 
-  datasource:
-    url: jdbc:mysql://localhost:3306/websocket_service?createDatabaseIfNotExist=true&useSSL=false
-    username: root
-    password: password
-    driver-class-name: com.mysql.cj.jdbc.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: true
-
-  flyway:
-    enabled: true
-    baseline-on-migrate: true
+  # WebSocket service is stateless — no DB needed.
+  # Disable JPA/Flyway auto-configuration.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
 
   data:
     redis:
       host: localhost
       port: 6379
+      password: ${REDIS_PASSWORD:redis123}
 
   kafka:
     bootstrap-servers: localhost:9092

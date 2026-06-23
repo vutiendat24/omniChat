@@ -1,7 +1,7 @@
 #!/bin/bash
-# Wait for Kafka to be ready
+# Create Kafka topics for OmniChat (run from host, targets Docker container)
 echo "Waiting for Kafka to be ready..."
-sleep 10
+sleep 5
 
 # Default configuration for Local (RF=1)
 RF=1
@@ -21,7 +21,7 @@ for topic_config in "${TOPICS[@]}"; do
   REP_FACTOR=$(echo $topic_config | cut -d: -f3)
   
   echo "Creating topic: $TOPIC_NAME"
-  docker exec omnichat-kafka /opt/bitnami/kafka/bin/kafka-topics.sh --create --if-not-exists \
+  docker exec omnichat-kafka /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
     --bootstrap-server localhost:9092 \
     --topic $TOPIC_NAME \
     --partitions $PARTS \
@@ -30,7 +30,7 @@ done
 
 # Config log compaction for customer topic
 echo "Configuring log compaction for omnichat.customer.events..."
-docker exec omnichat-kafka /opt/bitnami/kafka/bin/kafka-configs.sh --alter \
+docker exec omnichat-kafka /opt/kafka/bin/kafka-configs.sh --alter \
   --bootstrap-server localhost:9092 \
   --entity-type topics \
   --entity-name omnichat.customer.events \

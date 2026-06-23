@@ -61,8 +61,17 @@ public class FacebookWebhookService {
                         
                         if (Boolean.TRUE.equals(isNewMessage)) {
                             log.info("Processing new message ID: {}", messageId);
-                            // Publish to Kafka
-                            eventProducer.publishIntegrationMessageReceived(senderId, rootNode);
+                            String pageId = entryNode.path("id").asText("0");
+                            Long channelConnectionId = parseChannelConnectionId(pageId);
+                            String messageText = messagingNode.path("message").path("text").asText("");
+
+                            eventProducer.publishInboundMessageReceived(
+                                    "FACEBOOK",
+                                    senderId,
+                                    channelConnectionId,
+                                    messageId,
+                                    messageText,
+                                    rootNode);
                         } else {
                             log.warn("Duplicate message ID ignored: {}", messageId);
                         }
@@ -72,6 +81,17 @@ public class FacebookWebhookService {
         } catch (Exception e) {
             log.error("Error processing webhook payload", e);
             throw new RuntimeException("Error processing webhook payload", e);
+        }
+    }
+
+    private Long parseChannelConnectionId(String pageId) {
+        if (pageId == null || pageId.isBlank() || pageId.length() > 18) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(pageId);
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 }

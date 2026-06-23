@@ -1,0 +1,27 @@
+# Build output
+**/target/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose.yml
+docker/
+
+# Docs
+docs/
+README.md
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven local repo cache (use container's)
+.m2/

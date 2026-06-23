@@ -1,0 +1,12 @@
+# Docker profile overrides — container-internal hostnames
+server:
+  port: 8080
+
+spring:
+  data:
+    redis:
+      host: redis
+      password: ${REDIS_PASSWORD:redis123}
+
+  kafka:
+    bootstrap-servers: kafka:29092

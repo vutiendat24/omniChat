@@ -74,6 +74,15 @@ public class ConversationEventConsumer {
                     }
                 }
 
+                case "conversation.transferred" -> {
+                    // UC-303: Manual transfer → adjust workload for both agents
+                    Long fromAgentId = event.path("fromAgentId").asLong(0);
+                    Long toAgentId = event.path("toAgentId").asLong(0);
+                    log.info("Conversation {} transferred: agent {} → agent {}, adjusting workloads",
+                            conversationId, fromAgentId, toAgentId);
+                    routingService.handleConversationTransferred(fromAgentId, toAgentId);
+                }
+
                 default -> log.debug("Ignoring event type '{}' for conversationId={}", eventType, conversationId);
             }
 

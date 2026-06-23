@@ -1,0 +1,17 @@
+# Docker profile overrides — container-internal hostnames
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:mysql://mysql:3306/conversation_service?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_ROOT_PASSWORD:root}
+
+  data:
+    redis:
+      host: redis
+      password: ${REDIS_PASSWORD:redis123}
+
+  kafka:
+    bootstrap-servers: kafka:29092

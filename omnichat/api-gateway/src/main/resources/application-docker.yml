@@ -1,0 +1,13 @@
+# Docker profile overrides — container-internal hostnames
+server:
+  port: 8080
+
+# Route targets resolve via Docker DNS
+omnichat:
+  services:
+    conversation-url: http://conversation-service:8080
+    routing-url: http://routing-service:8080
+    customer-url: http://customer-service:8080
+    integration-url: http://integration-service:8080
+    websocket-url: http://websocket-service:8080
+    websocket-ws-url: ws://websocket-service:8080

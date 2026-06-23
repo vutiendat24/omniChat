@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omnichat.conversation.service.ConversationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
@@ -39,8 +40,10 @@ public class RouteAssignedConsumer {
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = TOPIC, groupId = "${spring.application.name}-group")
-    public void consumeConversationEvent(Object eventPayload, Acknowledgment acknowledgment) {
+    public void consumeConversationEvent(ConsumerRecord<String, Object> record, Acknowledgment acknowledgment) {
         try {
+            Object eventPayload = record.value();
+
             // Convert payload to JsonNode for flexible field access
             JsonNode event;
             if (eventPayload instanceof JsonNode) {

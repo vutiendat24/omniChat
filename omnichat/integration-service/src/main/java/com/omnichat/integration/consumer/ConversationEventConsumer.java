@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omnichat.integration.service.OutboundMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
@@ -27,8 +28,10 @@ public class ConversationEventConsumer {
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = TOPIC, groupId = "integration-service-group")
-    public void consumeConversationEvent(Object eventPayload, Acknowledgment acknowledgment) {
+    public void consumeConversationEvent(ConsumerRecord<String, Object> record, Acknowledgment acknowledgment) {
         try {
+            Object eventPayload = record.value();
+
             JsonNode event;
             if (eventPayload instanceof JsonNode) {
                 event = (JsonNode) eventPayload;

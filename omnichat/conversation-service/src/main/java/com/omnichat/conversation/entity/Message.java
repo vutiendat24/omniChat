@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 public class Message {
 
     @Id
-    @Column(length = 36)
+    @Column(length = 255)
     private String id;
 
     @Column(name = "conversation_id", nullable = false, length = 36)

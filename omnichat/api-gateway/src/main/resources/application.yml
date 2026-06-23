@@ -4,6 +4,64 @@ server:
 spring:
   application:
     name: api-gateway
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns:
+              - "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders:
+              - "*"
+            exposedHeaders:
+              - "*"
+      routes:
+        - id: conversation-service
+          uri: ${omnichat.services.conversation-url}
+          predicates:
+            - Path=/api/v1/conversations/**
+
+        - id: routing-service
+          uri: ${omnichat.services.routing-url}
+          predicates:
+            - Path=/api/v1/agents/**
+
+        - id: facebook-webhook
+          uri: ${omnichat.services.integration-url}
+          predicates:
+            - Path=/webhook/fb/**
+
+        - id: zalo-webhook
+          uri: ${omnichat.services.integration-url}
+          predicates:
+            - Path=/webhook/zalo/**
+
+        - id: websocket-service-ws
+          uri: ${omnichat.services.websocket-ws-url}
+          predicates:
+            - Path=/ws/**
+            - Header=Upgrade, websocket
+
+        - id: websocket-service-http
+          uri: ${omnichat.services.websocket-url}
+          predicates:
+            - Path=/ws/**
+
+omnichat:
+  services:
+    conversation-url: http://localhost:8081
+    routing-url: http://localhost:8082
+    customer-url: http://localhost:8083
+    integration-url: http://localhost:8084
+    websocket-url: http://localhost:8085
+    websocket-ws-url: ws://localhost:8085
 
 management:
   endpoints:

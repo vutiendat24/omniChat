@@ -1,6 +1,7 @@
 package com.omnichat.integration.client;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -13,7 +14,7 @@ import java.util.Map;
  * HTTP Client for calling Facebook Graph API - Send API.
  * Documentation: https://developers.facebook.com/docs/messenger-platform/send-messages
  *
- * Endpoint: POST https://graph.facebook.com/v18.0/me/messages?access_token={PAGE_ACCESS_TOKEN}
+ * Endpoint: POST https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}
  *
  * Request body:
  * {
@@ -21,11 +22,11 @@ import java.util.Map;
  *   "message": { "text": "hello, world!" }
  * }
  */
-@Slf4j
 @Component
 public class FacebookSendApiClient {
 
-    private static final String GRAPH_API_URL = "https://graph.facebook.com/v18.0/me/messages";
+    private static final Logger log = LoggerFactory.getLogger(FacebookSendApiClient.class);
+    private static final String GRAPH_API_URL = "https://graph.facebook.com/v20.0/me/messages";
 
     private final RestTemplate restTemplate;
 

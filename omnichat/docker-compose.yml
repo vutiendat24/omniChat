@@ -1,6 +1,9 @@
-version: '3.8'
-
 services:
+
+  # ============================================================
+  # Infrastructure
+  # ============================================================
+
   mysql:
     image: mysql:8.4
     container_name: omnichat-mysql
@@ -8,25 +11,32 @@ services:
       - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-    # Cấu hình charset utf8mb4 cho database
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # UTF-8 + performance tuning for dev
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=128M
+      --max-connections=200
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
     networks:
       - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   redis:
     image: redis:7-alpine
     container_name: omnichat-redis
-    # Yêu cầu password khi kết nối
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:
@@ -36,53 +46,335 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
     networks:
       - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 192M
 
   kafka:
-    image: bitnami/kafka:3.7
+    image: apache/kafka:3.9.0
     container_name: omnichat-kafka
     ports:
       - "9092:9092"
     environment:
-      # KRaft settings (không cần Zookeeper)
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=controller,broker
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      # Cấu hình Listeners
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:29092,CONTROLLER://:9093,EXTERNAL://:9092
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-      # Tắt auto create topics
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+      # KRaft mode (no Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Listeners
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Auto-create topics enabled for dev convenience
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Performance tuning
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms256m
+      CLUSTER_ID: omnichat-kafka-cluster-id-01
     volumes:
-      - kafka_data:/bitnami/kafka
+      - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
     networks:
       - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 768M
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: omnichat-kafka-ui
     ports:
-      - "8081:8080"
+      - "9090:8080"
     environment:
       - KAFKA_CLUSTERS_0_NAME=omnichat-local
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=${KAFKA_BROKER:-kafka:29092}
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
     depends_on:
       kafka:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    profiles:
+      - tools
+
+  # ============================================================
+  # Kafka Topic Initialization
+  # ============================================================
+
+  kafka-init:
+    image: apache/kafka:3.9.0
+    container_name: omnichat-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo '>>> Creating Kafka topics...'
+        TOPICS=(
+          "omnichat.conversation.events"
+          "omnichat.customer.events"
+          "omnichat.integration.events"
+          "omnichat.websocket.events"
+          "omnichat.notification.events"
+        )
+        for TOPIC in "$${TOPICS[@]}"; do
+          /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
+            --bootstrap-server kafka:29092 \
+            --topic "$$TOPIC" \
+            --partitions 6 \
+            --replication-factor 1
+          echo "  ✓ $$TOPIC"
+        done
+        # Log compaction for customer events
+        /opt/kafka/bin/kafka-configs.sh --alter \
+          --bootstrap-server kafka:29092 \
+          --entity-type topics \
+          --entity-name omnichat.customer.events \
+          --add-config cleanup.policy=compact
+        echo '>>> All topics created!'
+    restart: "no"
+    networks:
+      - omnichat-net
+
+  # ============================================================
+  # Application Services
+  # ============================================================
+
+  conversation-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: conversation-service
+    container_name: omnichat-conversation
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  routing-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: routing-service
+    container_name: omnichat-routing
+    ports:
+      - "8082:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  customer-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: customer-service
+    container_name: omnichat-customer
+    ports:
+      - "8083:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  integration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: integration-service
+    container_name: omnichat-integration
+    ports:
+      - "8084:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET:-your-app-secret}
+      - FACEBOOK_VERIFY_TOKEN=${FACEBOOK_VERIFY_TOKEN:-your-verify-token}
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  websocket-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: websocket-service
+    container_name: omnichat-websocket
+    ports:
+      - "8085:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: api-gateway
+    container_name: omnichat-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - JWT_SECRET=${JWT_SECRET:-a-very-secure-secret-key-that-is-at-least-32-bytes-long-for-hmac-sha-256}
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0
+    depends_on:
+      conversation-service:
+        condition: service_healthy
+      routing-service:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+      integration-service:
+        condition: service_healthy
+      websocket-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+    networks:
+      - omnichat-net
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+# ============================================================
+# Networks & Volumes
+# ============================================================
 
 networks:
   omnichat-net:

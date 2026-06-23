@@ -107,7 +107,7 @@ Dựa trên Bounded Contexts đã xác định, hệ thống được chia làm 
 1. **Integration Service (Cửa ngõ kết nối):**
    - Quản lý quá trình xác thực (OAuth) với Facebook, Zalo, TikTok, Shopee.
    - Lưu trữ và làm mới Access Tokens dài hạn.
-   - Chức năng như một Anti-Corruption Layer (ACL): Tiếp nhận Webhook với các định dạng khác nhau của từng nền tảng, chuẩn hóa thành 1 định dạng chuẩn nội bộ, và đẩy vào Kafka (topic `integration.message.received`).
+   - Chức năng như một Anti-Corruption Layer (ACL): Tiếp nhận Webhook với các định dạng khác nhau của từng nền tảng, chuẩn hóa thành 1 định dạng chuẩn nội bộ, và đẩy vào Kafka (topic `omnichat.integration.events`).
 
 2. **Conversation Service (Dịch vụ Hội thoại cốt lõi):**
    - Quản lý Aggregate `Conversation` và `Message`.
@@ -136,11 +136,11 @@ flowchart TD
     A[Khách hàng chat trên Facebook] -->|Webhook HTTP POST| B(API Gateway)
     B --> C{Integration Service}
     C -->|Check Idempotency| D[(Redis)]
-    C -->|Chuẩn hóa Payload| E[Kafka: topic 'integration.message.received']
+    C -->|Chuẩn hóa Payload| E["Kafka: omnichat.integration.events<br/>(IntegrationMessageReceived)"]
     
     E --> F{Conversation Service}
     F -->|Lưu Message, Cập nhật LastActivity| G[(MySQL Conv)]
-    F -->|Publish Event| H[Kafka: topic 'conversation.message.received']
+    F -->|Publish Event| H["Kafka: omnichat.conversation.events<br/>(conversation.message.received)"]
     
     H --> I{Routing Service}
     I -->|Kiểm tra hội thoại đã gán chưa?| J{Đã gán?}
@@ -148,7 +148,7 @@ flowchart TD
     J -- CÓ --> K[Bỏ qua, không chia lại]
     J -- KHÔNG --> L[Tìm Agent rảnh & Phù hợp]
     L -->|Cập nhật Workload & Lock| M[(Redis / MySQL Rout)]
-    L -->|Lệnh gán chat| N[Kafka: topic 'conversation.assigned']
+    L -->|Lệnh gán chat| N["Kafka: omnichat.conversation.events<br/>(route.assigned)"]
     
     N --> F
     H --> O{WebSocket Service}
@@ -217,11 +217,13 @@ Sử dụng **Redis** làm bộ nhớ đệm phân tán. Tận dụng tính năn
 
 Kafka đóng vai trò là "Xương sống" (Nerve center) để liên kết các Microservices bằng cơ chế Event-Driven.
 
-*   **Topics Design (Phân mảnh theo Entity & Aggregate):**
-    *   `ocm.integration.events` (Partitions: 6, Retention: 7 days)
-    *   `ocm.conversation.events` (Partitions: 12, Retention: 7 days)
-    *   `ocm.routing.commands` (Partitions: 6, Retention: 3 days)
-*   **Partition Key:** Sử dụng `ConversationID` hoặc `ChannelIdentityID` làm khóa phân mảnh (Partition Key) để đảm bảo toàn bộ tin nhắn thuộc về 1 khách hàng luôn rơi vào cùng 1 Partition, đảm bảo thứ tự xử lý (Ordering guarantee) bởi cùng 1 Consumer Thread.
+*   **Topics Design (Phân mảnh theo Domain - Chi tiết tại [1.3.1.1-Kafka-Topics-Design.md](1.3.1.1-Kafka-Topics-Design.md)):**
+    *   `omnichat.conversation.events` (Partitions: 6, Retention: 7 days)
+    *   `omnichat.customer.events` (Partitions: 6, Retention: Compact)
+    *   `omnichat.integration.events` (Partitions: 6, Retention: 3 days)
+    *   `omnichat.websocket.events` (Partitions: 6, Retention: 1 day)
+    *   `omnichat.notification.events` (Partitions: 3, Retention: 1 day)
+*   **Partition Key:** Sử dụng `ConversationID` làm khóa phân mảnh cho các topic conversation/integration/websocket, và `CustomerID` cho customer topic. Đảm bảo toàn bộ tin nhắn thuộc về 1 cuộc hội thoại luôn rơi vào cùng 1 Partition, đảm bảo thứ tự xử lý (Ordering guarantee) bởi cùng 1 Consumer Thread.
 *   **Resiliency & Dead Letter Queue (DLQ):** 
     *   Sử dụng Spring Kafka Error Handling. Nếu xử lý một message bị lỗi (VD: Null Pointer, Timeout DB), message được đẩy sang một Retry Topic nội bộ với Back-off policy.
     *   Sau N lần Retry thất bại, message sẽ bị đẩy vào một `DLQ_Topic` để đội ngũ kỹ thuật xử lý thủ công (Manual Intervention).

@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  @apply box-border;
+}
+html {
+  @apply h-full;
+}
+
+body {
+  @apply h-full bg-neutral-50 text-neutral-900;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  @apply h-full;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-neutral-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-300 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-neutral-400;
+}
+
+/* Smooth transitions */
+button, a, input, select, textarea {
+  @apply transition-colors duration-200;
+}
+
+/* Message bubble styles */
+.message-bubble {
+  @apply rounded-lg p-3 max-w-xs break-words;
+}
+
+.message-bubble.customer {
+  @apply bg-blue-100 text-neutral-900;
+}
+
+.message-bubble.agent {
+  @apply bg-white text-neutral-900 border border-neutral-200;
+}
+
+.message-bubble.system {
+  @apply bg-neutral-100 text-neutral-600 text-sm italic;
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* Loading skeleton */
+.skeleton {
+  @apply bg-neutral-200 animate-pulse;
+}

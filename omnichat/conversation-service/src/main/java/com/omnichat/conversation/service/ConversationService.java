@@ -5,6 +5,7 @@ import com.omnichat.conversation.dto.ConversationDto;
 import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
 import com.omnichat.conversation.dto.SendMessageRequest;
+import com.omnichat.conversation.dto.TransferRequest;
 import com.omnichat.conversation.entity.Conversation;
 import com.omnichat.conversation.entity.Message;
 import com.omnichat.conversation.producer.ConversationEventProducer;
@@ -46,6 +47,11 @@ public class ConversationService {
      */
     @Transactional
     public void processIncomingMessage(JsonNode eventPayload) {
+        if ("integration.message.received".equals(eventPayload.path("eventType").asText(""))) {
+            processNormalizedIncomingMessage(eventPayload);
+            return;
+        }
+
         // Extract fields from Facebook webhook payload structure
         JsonNode entry = eventPayload.path("entry").get(0);
         JsonNode messaging = entry.path("messaging").get(0);
@@ -101,6 +107,64 @@ public class ConversationService {
         conversationEventProducer.publishConversationMessageReceived(
                 conversation.getId(), message.getId(), conversation.getStatus().name(),
                 null, null, null); // Customer-originated: no outbound push needed
+    }
+
+    private void processNormalizedIncomingMessage(JsonNode eventPayload) {
+        String platform = eventPayload.path("platform").asText("UNKNOWN").toUpperCase();
+        String externalUserId = eventPayload.path("externalUserId").asText();
+        Long channelConnectionId = eventPayload.path("channelConnectionId").asLong(0L);
+        String rawMessageId = eventPayload.path("messageId").asText(UUID.randomUUID().toString());
+        String messageId = normalizeExternalMessageId(platform, rawMessageId);
+        String messageText = eventPayload.path("messageText").asText(null);
+        String channelIdentityId = platform + ":" + externalUserId;
+
+        if (externalUserId == null || externalUserId.isBlank()) {
+            throw new IllegalArgumentException("externalUserId is required");
+        }
+
+        Conversation conversation = findActiveConversation(channelIdentityId);
+        if (conversation == null && "FACEBOOK".equals(platform)) {
+            conversation = findActiveConversation(externalUserId);
+        }
+
+        boolean isNewConversation = false;
+
+        if (conversation == null) {
+            isNewConversation = true;
+            conversation = Conversation.builder()
+                    .id(UUID.randomUUID().toString())
+                    .channelIdentityId(channelIdentityId)
+                    .channelConnectionId(channelConnectionId)
+                    .status(Conversation.ConversationStatus.UNASSIGNED)
+                    .lastActivityAt(LocalDateTime.now())
+                    .build();
+            conversation = conversationRepository.save(conversation);
+            log.info("Created new {} conversation: {}", platform, conversation.getId());
+        } else {
+            conversation.setLastActivityAt(LocalDateTime.now());
+            conversation = conversationRepository.save(conversation);
+            log.info("Updated existing {} conversation: {}", platform, conversation.getId());
+        }
+
+        Message message = Message.builder()
+                .id(messageId)
+                .conversationId(conversation.getId())
+                .senderType(Message.SenderType.CUSTOMER)
+                .senderId(channelIdentityId)
+                .contentText(messageText)
+                .status(Message.MessageStatus.SENT)
+                .sentAt(LocalDateTime.now())
+                .build();
+        messageRepository.save(message);
+        log.info("Saved {} message: {} for conversation: {}", platform, message.getId(), conversation.getId());
+
+        if (isNewConversation) {
+            conversationEventProducer.publishConversationCreated(
+                    conversation.getId(), channelIdentityId, conversation.getChannelConnectionId());
+        }
+        conversationEventProducer.publishConversationMessageReceived(
+                conversation.getId(), message.getId(), conversation.getStatus().name(),
+                null, null, null);
     }
 
     /**
@@ -225,7 +289,7 @@ public class ConversationService {
         // 6. Publish event to Kafka for integration-service to deliver to external channel
         conversationEventProducer.publishConversationMessageReceived(
                 conversationId, message.getId(), conversation.getStatus().name(),
-                conversation.getChannelIdentityId(), conversation.getChannelConnectionId(),
+                extractExternalUserId(conversation.getChannelIdentityId()), conversation.getChannelConnectionId(),
                 request.getContentText());
 
         return MessageDto.fromEntity(message);
@@ -275,6 +339,106 @@ public class ConversationService {
                 conversationId, agentId, "OPEN");
     }
 
+    /**
+     * UC-303 - Manual conversation transfer.
+     *
+     * API: PATCH /api/v1/conversations/{id}/assign
+     *
+     * Per PRD §3.3 UC-303:
+     *   Agent/Supervisor selects a target Agent from online members list
+     *   → optionally enters a transfer reason
+     *   → system transfers ownership to the new Agent.
+     *   The old Agent loses messaging rights (except Supervisor/Admin).
+     *
+     * Per RBAC matrix (PRD §2.2):
+     *   Admin: R/W | Supervisor: R/W | Agent: R (Chỉ chuyển - can only transfer their own)
+     *
+     * Flow:
+     * 1. Validate request (targetAgentId required, > 0)
+     * 2. Find conversation (404 if not found)
+     * 3. Guard: conversation must be OPEN or UNASSIGNED (cannot transfer CLOSED)
+     * 4. Guard: cannot transfer to the same agent
+     * 5. Update assignedAgentId to the target agent
+     * 6. If conversation was UNASSIGNED, change status to OPEN
+     * 7. Insert a SYSTEM message recording the transfer
+     * 8. Publish conversation.transferred event to Kafka:
+     *    - Routing Service → decrement old agent workload, increment new agent workload
+     *    - WebSocket Service → notify both old and new agents in real-time
+     *
+     * @param conversationId the conversation to transfer
+     * @param request        contains targetAgentId and optional reason
+     * @param requestingAgentId the agent performing the transfer (from JWT/header)
+     * @return updated ConversationDto
+     */
+    @Transactional
+    public ConversationDto transferConversation(String conversationId, TransferRequest request, String requestingAgentId) {
+        // 1. Validate request
+        if (!request.isValid()) {
+            throw new IllegalArgumentException("targetAgentId is required and must be a positive number");
+        }
+
+        // 2. Find conversation
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                        "Conversation not found: " + conversationId));
+
+        // 3. Guard: only OPEN or UNASSIGNED conversations can be transferred
+        if (conversation.getStatus() == Conversation.ConversationStatus.CLOSED) {
+            throw new IllegalStateException("Cannot transfer a CLOSED conversation: " + conversationId);
+        }
+
+        // 4. Guard: cannot transfer to the same agent
+        Long oldAgentId = conversation.getAssignedAgentId();
+        Long newAgentId = request.getTargetAgentId();
+
+        if (oldAgentId != null && oldAgentId.equals(newAgentId)) {
+            throw new IllegalArgumentException(
+                    "Cannot transfer conversation to the same agent: " + newAgentId);
+        }
+
+        // 5. Update conversation: assign to new agent
+        conversation.setAssignedAgentId(newAgentId);
+
+        // If UNASSIGNED → OPEN (manual assignment by Supervisor/Admin)
+        if (conversation.getStatus() == Conversation.ConversationStatus.UNASSIGNED) {
+            conversation.setStatus(Conversation.ConversationStatus.OPEN);
+        }
+
+        conversation.setLastActivityAt(LocalDateTime.now());
+        conversationRepository.save(conversation);
+
+        log.info("Conversation {} transferred: agent {} → agent {} (by agent {}, reason: {})",
+                conversationId, oldAgentId, newAgentId, requestingAgentId,
+                request.getReason() != null ? request.getReason() : "N/A");
+
+        // 6. Insert a SYSTEM message recording the transfer (audit trail)
+        String transferNote = String.format("Conversation transferred from Agent %s to Agent %s",
+                oldAgentId != null ? oldAgentId : "unassigned", newAgentId);
+        if (request.getReason() != null && !request.getReason().isBlank()) {
+            transferNote += ". Reason: " + request.getReason();
+        }
+
+        Message systemMessage = Message.builder()
+                .id(UUID.randomUUID().toString())
+                .conversationId(conversationId)
+                .senderType(Message.SenderType.SYSTEM)
+                .senderId("system")
+                .contentText(transferNote)
+                .status(Message.MessageStatus.SENT)
+                .sentAt(LocalDateTime.now())
+                .build();
+        messageRepository.save(systemMessage);
+
+        // 7. Publish conversation.transferred event to Kafka
+        conversationEventProducer.publishConversationTransferred(
+                conversationId,
+                oldAgentId != null ? oldAgentId : 0L,
+                newAgentId,
+                request.getReason());
+
+        return ConversationDto.fromEntity(conversation);
+    }
+
     private String mapToEntityField(String apiField) {
         return switch (apiField) {
             case "last_activity_at" -> "lastActivityAt";
@@ -283,5 +447,33 @@ public class ConversationService {
             case "status" -> "status";
             default -> "lastActivityAt";
         };
+    }
+
+    private String normalizeExternalMessageId(String platform, String messageId) {
+        String normalizedPlatform = platform != null && !platform.isBlank() ? platform.toLowerCase() : "external";
+        String normalizedMessageId = messageId != null && !messageId.isBlank() ? messageId : UUID.randomUUID().toString();
+        if (normalizedMessageId.startsWith(normalizedPlatform + ":")) {
+            return normalizedMessageId;
+        }
+        return normalizedPlatform + ":" + normalizedMessageId;
+    }
+
+    private String extractExternalUserId(String channelIdentityId) {
+        if (channelIdentityId == null) {
+            return "";
+        }
+        int separatorIndex = channelIdentityId.indexOf(':');
+        if (separatorIndex < 0 || separatorIndex == channelIdentityId.length() - 1) {
+            return channelIdentityId;
+        }
+        return channelIdentityId.substring(separatorIndex + 1);
+    }
+
+    private Conversation findActiveConversation(String channelIdentityId) {
+        return conversationRepository
+                .findByChannelIdentityIdAndStatus(channelIdentityId, Conversation.ConversationStatus.UNASSIGNED)
+                .or(() -> conversationRepository.findByChannelIdentityIdAndStatus(
+                        channelIdentityId, Conversation.ConversationStatus.OPEN))
+                .orElse(null);
     }
 }

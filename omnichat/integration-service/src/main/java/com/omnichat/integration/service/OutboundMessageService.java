@@ -1,6 +1,7 @@
 package com.omnichat.integration.service;
 
 import com.omnichat.integration.client.FacebookSendApiClient;
+import com.omnichat.integration.client.ZaloSendApiClient;
 import com.omnichat.integration.entity.ChannelConnection;
 import com.omnichat.integration.producer.IntegrationEventProducer;
 import com.omnichat.integration.repository.ChannelConnectionRepository;
@@ -22,6 +23,7 @@ public class OutboundMessageService {
 
     private final ChannelConnectionRepository channelConnectionRepository;
     private final FacebookSendApiClient facebookSendApiClient;
+    private final ZaloSendApiClient zaloSendApiClient;
     private final IntegrationEventProducer integrationEventProducer;
 
     /**
@@ -63,7 +65,10 @@ public class OutboundMessageService {
             case FACEBOOK:
                 success = sendViaFacebook(recipientExternalId, messageText, connection.getAccessToken());
                 break;
-            // Future: case ZALO, SHOPEE, TIKTOK
+            case ZALO:
+                success = sendViaZalo(recipientExternalId, messageText, connection.getAccessToken());
+                break;
+            // Future: case SHOPEE, TIKTOK
             default:
                 log.warn("Unsupported platform: {}", connection.getPlatform());
                 publishStatusEvent(conversationId, messageId, "FAILED", "Unsupported platform: " + connection.getPlatform());
@@ -84,6 +89,14 @@ public class OutboundMessageService {
             return true; // Consider attachments-only as handled separately
         }
         return facebookSendApiClient.sendTextMessage(recipientPsid, messageText, accessToken);
+    }
+
+    private boolean sendViaZalo(String recipientUserId, String messageText, String accessToken) {
+        if (messageText == null || messageText.isBlank()) {
+            log.warn("Empty message text, skipping Zalo Send API call");
+            return true;
+        }
+        return zaloSendApiClient.sendTextMessage(recipientUserId, messageText, accessToken);
     }
 
     /**

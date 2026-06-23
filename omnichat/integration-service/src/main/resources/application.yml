@@ -6,9 +6,9 @@ spring:
     name: integration-service
 
   datasource:
-    url: jdbc:mysql://localhost:3306/integration_service?createDatabaseIfNotExist=true&useSSL=false
-    username: root
-    password: password
+    url: jdbc:mysql://localhost:3306/integration_service?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_ROOT_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -24,6 +24,7 @@ spring:
     redis:
       host: localhost
       port: 6379
+      password: ${REDIS_PASSWORD:redis123}
 
   kafka:
     bootstrap-servers: localhost:9092
@@ -43,7 +44,7 @@ spring:
       enable-auto-commit: false
       properties:
         spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-        spring.json.trusted.packages: "com.omnichat.*"
+        spring.json.trusted.packages: "com.omnichat.*,com.fasterxml.jackson.databind.node"
     listener:
       ack-mode: MANUAL_IMMEDIATE
       concurrency: 3
@@ -62,3 +63,6 @@ facebook:
   app-secret: ${FACEBOOK_APP_SECRET:your-app-secret}
   verify-token: ${FACEBOOK_VERIFY_TOKEN:your-verify-token}
 
+# Zalo Official Account configuration
+zalo:
+  send-message-url: ${ZALO_SEND_MESSAGE_URL:https://openapi.zalo.me/v3.0/oa/message/cs}

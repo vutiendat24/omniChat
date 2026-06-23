@@ -16,6 +16,8 @@ Tài liệu này định nghĩa các chuẩn giao tiếp API RESTful giữa Fron
 | **PATCH** | `/api/v1/conversations/{id}/assign` | Gán/Điều hướng thủ công hội thoại cho một Agent. |
 | **PATCH** | `/api/v1/conversations/{id}/status` | Cập nhật trạng thái hội thoại (Ví dụ: Đóng hội thoại). |
 | **PATCH** | `/api/v1/agents/{id}/status` | Cập nhật trạng thái hoạt động của Agent (ONLINE/OFFLINE). |
+| **POST** | `/webhook/zalo/{channelConnectionId}` | Zalo OA gửi webhook tin nhắn khách hàng vào Integration Service. |
+| **POST** | `/webhook/zalo?channelConnectionId={id}` | Biến thể query param cho webhook Zalo khi không tiện cấu hình path động. |
 
 ---
 
@@ -50,6 +52,33 @@ Tài liệu này định nghĩa các chuẩn giao tiếp API RESTful giữa Fron
   }
 }
 ```
+
+---
+
+### 2.3. Webhook Zalo OA
+
+Webhook Zalo không phải API frontend. Trước khi cấu hình webhook, cần có bản ghi `channel_connections` với `platform='ZALO'`, `status='CONNECTED'`, và `access_token` là OA access token dùng để gửi tin trả lời.
+
+Endpoint khuyến nghị:
+
+```http
+POST /webhook/zalo/{channelConnectionId}
+```
+
+Payload Zalo được Integration Service chuẩn hóa thành event Kafka:
+
+```json
+{
+  "eventType": "integration.message.received",
+  "platform": "ZALO",
+  "externalUserId": "<zalo_user_id>",
+  "channelConnectionId": 2,
+  "messageId": "<msg_id>",
+  "messageText": "Xin chao"
+}
+```
+
+Conversation Service sẽ tạo/cập nhật hội thoại chung trong inbox. Khi agent gửi reply qua `POST /api/v1/conversations/{id}/messages`, Integration Service dựa vào `channelConnectionId` để gửi ra Zalo OA API.
 
 ---
 

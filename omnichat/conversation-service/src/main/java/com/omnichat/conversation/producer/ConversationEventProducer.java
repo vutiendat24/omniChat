@@ -90,4 +90,38 @@ public class ConversationEventProducer {
                     }
                 });
     }
+
+    /**
+     * Publish ConversationTransferred event for manual transfer (UC-303).
+     *
+     * Consumed by:
+     * - Routing Service → adjusts workload: decrement old agent, increment new agent
+     * - WebSocket Service → pushes transfer notification to both old and new agents
+     *
+     * @param conversationId the transferred conversation
+     * @param fromAgentId    the agent releasing the conversation
+     * @param toAgentId      the agent receiving the conversation
+     * @param reason         optional reason for the transfer
+     */
+    public void publishConversationTransferred(String conversationId, Long fromAgentId, Long toAgentId, String reason) {
+        java.util.HashMap<String, Object> event = new java.util.HashMap<>();
+        event.put("eventType", "conversation.transferred");
+        event.put("conversationId", conversationId);
+        event.put("fromAgentId", fromAgentId);
+        event.put("toAgentId", toAgentId);
+        event.put("reason", reason != null ? reason : "");
+        event.put("status", "OPEN");
+        event.put("timestamp", LocalDateTime.now().toString());
+
+        kafkaTemplate.send(TOPIC, conversationId, event)
+                .whenComplete((result, ex) -> {
+                    if (ex == null) {
+                        log.info("Published conversation.transferred event: conversationId={}, from={}, to={}",
+                                conversationId, fromAgentId, toAgentId);
+                    } else {
+                        log.error("Failed to publish conversation.transferred event for conversationId={}",
+                                conversationId, ex);
+                    }
+                });
+    }
 }

@@ -287,4 +287,53 @@ public class RoutingService {
             log.error("Failed to sync workload to MySQL for agent {}. Redis remains authoritative.", agentId, e);
         }
     }
+
+    /**
+     * UC-303 - Handle manual conversation transfer workload adjustment.
+     *
+     * When a conversation is manually transferred from one agent to another:
+     * 1. Decrement old agent's workload by 1 (Redis HINCRBY -1 + MySQL sync)
+     * 2. Increment new agent's workload by 1 (Redis HINCRBY +1 + MySQL sync)
+     *
+     * Called by ConversationEventConsumer when a "conversation.transferred" event is received.
+     *
+     * @param fromAgentId the agent releasing the conversation (0 if was UNASSIGNED)
+     * @param toAgentId   the agent receiving the conversation
+     */
+    public void handleConversationTransferred(Long fromAgentId, Long toAgentId) {
+        // 1. Decrement old agent workload (skip if was UNASSIGNED, i.e. fromAgentId == 0)
+        if (fromAgentId != null && fromAgentId > 0) {
+            try {
+                String profileKey = String.format(AGENT_PROFILE_KEY, fromAgentId);
+                Long newWorkload = redisTemplate.opsForHash().increment(profileKey, "currentWorkload", -1);
+
+                // Guard: workload should never go below 0
+                if (newWorkload != null && newWorkload < 0) {
+                    redisTemplate.opsForHash().put(profileKey, "currentWorkload", 0);
+                    newWorkload = 0L;
+                }
+
+                log.info("Decremented workload for agent {} (transfer out): newWorkload={}", fromAgentId, newWorkload);
+                syncWorkloadToMySQL(fromAgentId);
+
+            } catch (Exception e) {
+                log.error("Failed to decrement workload for agent {} during transfer", fromAgentId, e);
+            }
+        }
+
+        // 2. Increment new agent workload
+        if (toAgentId != null && toAgentId > 0) {
+            boolean success = atomicIncrementWorkload(toAgentId);
+            if (success) {
+                syncWorkloadToMySQL(toAgentId);
+                log.info("Incremented workload for agent {} (transfer in)", toAgentId);
+            } else {
+                // Even if capacity exceeded, the transfer was already committed in conversation-service.
+                // Log a warning — the workload state will be reconciled by a background job.
+                log.warn("Agent {} may be over capacity after manual transfer. " +
+                        "Transfer already committed. Workload will reconcile.", toAgentId);
+            }
+        }
+    }
 }
+
