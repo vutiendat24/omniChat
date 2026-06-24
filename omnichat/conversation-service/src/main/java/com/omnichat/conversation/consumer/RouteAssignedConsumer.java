@@ -40,17 +40,10 @@ public class RouteAssignedConsumer {
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = TOPIC, groupId = "${spring.application.name}-group")
-    public void consumeConversationEvent(ConsumerRecord<String, Object> record, Acknowledgment acknowledgment) {
+    public void consumeConversationEvent(Object message, Acknowledgment acknowledgment) {
         try {
-            Object eventPayload = record.value();
-
-            // Convert payload to JsonNode for flexible field access
-            JsonNode event;
-            if (eventPayload instanceof JsonNode) {
-                event = (JsonNode) eventPayload;
-            } else {
-                event = objectMapper.valueToTree(eventPayload);
-            }
+            Object eventPayload = unwrapPayload(message);
+            JsonNode event = toJsonNode(eventPayload);
 
             String eventType = event.path("eventType").asText("");
 
@@ -84,5 +77,25 @@ public class RouteAssignedConsumer {
             // Rethrow so DefaultErrorHandler can retry → DLQ
             throw new RuntimeException("Failed to process route.assigned event", e);
         }
+    }
+
+    private Object unwrapPayload(Object message) {
+        if (message instanceof org.apache.kafka.clients.consumer.ConsumerRecord<?, ?> record) {
+            return record.value();
+        }
+        return message;
+    }
+
+    private JsonNode toJsonNode(Object eventPayload) throws java.io.IOException {
+        if (eventPayload instanceof JsonNode jsonNode) {
+            return jsonNode;
+        }
+        if (eventPayload instanceof String json) {
+            return objectMapper.readTree(json);
+        }
+        if (eventPayload instanceof byte[] bytes) {
+            return objectMapper.readTree(bytes);
+        }
+        return objectMapper.valueToTree(eventPayload);
     }
 }

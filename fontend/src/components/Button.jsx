@@ -10,9 +10,9 @@ export const Button = ({
   const baseStyles = 'font-medium rounded-lg transition-colors duration-200 inline-flex items-center justify-center gap-2'
 
   const variants = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 disabled:bg-neutral-300',
+    primary: 'bg-primary-600 text-blue hover:bg-primary-700 disabled:bg-neutral-300',
     secondary: 'bg-neutral-200 text-neutral-900 hover:bg-neutral-300 disabled:bg-neutral-100',
-    danger: 'bg-accent-danger text-white hover:bg-red-600 disabled:bg-neutral-300',
+    danger: 'bg-accent-danger text-blue hover:bg-red-600 disabled:bg-neutral-300',
     ghost: 'text-neutral-700 hover:bg-neutral-100 disabled:text-neutral-400'
   }
 

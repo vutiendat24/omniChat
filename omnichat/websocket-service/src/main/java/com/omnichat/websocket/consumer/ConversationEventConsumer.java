@@ -45,14 +45,10 @@ public class ConversationEventConsumer {
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = TOPIC, groupId = "${spring.application.name}-group")
-    public void consumeConversationEvent(Object eventPayload, Acknowledgment acknowledgment) {
+    public void consumeConversationEvent(Object message, Acknowledgment acknowledgment) {
         try {
-            JsonNode event;
-            if (eventPayload instanceof JsonNode) {
-                event = (JsonNode) eventPayload;
-            } else {
-                event = objectMapper.valueToTree(eventPayload);
-            }
+            Object eventPayload = unwrapPayload(message);
+            JsonNode event = toJsonNode(eventPayload);
 
             String eventType = event.path("eventType").asText("");
             String conversationId = event.path("conversationId").asText("");
@@ -192,5 +188,25 @@ public class ConversationEventConsumer {
         payload.put("data", objectMapper.convertValue(event, Map.class));
         payload.put("timestamp", System.currentTimeMillis());
         return payload;
+    }
+
+    private Object unwrapPayload(Object message) {
+        if (message instanceof org.apache.kafka.clients.consumer.ConsumerRecord<?, ?> record) {
+            return record.value();
+        }
+        return message;
+    }
+
+    private JsonNode toJsonNode(Object eventPayload) throws java.io.IOException {
+        if (eventPayload instanceof JsonNode jsonNode) {
+            return jsonNode;
+        }
+        if (eventPayload instanceof String json) {
+            return objectMapper.readTree(json);
+        }
+        if (eventPayload instanceof byte[] bytes) {
+            return objectMapper.readTree(bytes);
+        }
+        return objectMapper.valueToTree(eventPayload);
     }
 }
