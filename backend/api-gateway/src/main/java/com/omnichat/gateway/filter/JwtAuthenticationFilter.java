@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -26,6 +27,7 @@ import java.util.List;
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final PublicKey publicKey;
+    private final ReactiveStringRedisTemplate redisTemplate;
     
     // Define public routes that do not require authentication
     private final List<String> openEndpoints = List.of(
@@ -34,9 +36,11 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             "/actuator"
     );
 
-    public JwtAuthenticationFilter(@Value("${jwt.public-key}") String publicKeyString) 
+    public JwtAuthenticationFilter(@Value("${jwt.public-key}") String publicKeyString,
+                                   ReactiveStringRedisTemplate redisTemplate) 
             throws NoSuchAlgorithmException, InvalidKeySpecException {
         this.publicKey = loadPublicKey(publicKeyString);
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -55,36 +59,43 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return unauthenticated(exchange, "Missing or invalid Authorization header");
         }
 
-        // 3. Extract and Verify Token
+        // 3. Extract Token
         String token = authHeader.substring(7);
-        try {
-            Claims claims = Jwts.parser()
-                    .verifyWith(publicKey)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
 
-            // 4. Extract Claims (assuming auth-service adds "userId" and "roles")
-            String userId = claims.getSubject(); // Or claims.get("userId", String.class)
-            String roles = claims.get("roles", String.class);
+        // 4. Check Blacklist in Redis and then Verify Token
+        return redisTemplate.hasKey("blacklist:" + token)
+                .flatMap(isBlacklisted -> {
+                    if (Boolean.TRUE.equals(isBlacklisted)) {
+                        return unauthenticated(exchange, "Token has been revoked or logged out");
+                    }
 
-            // 5. Mutate request to add headers for downstream services
-            ServerHttpRequest mutatedRequest = request.mutate()
-                    .header("X-User-Id", userId != null ? userId : "")
-                    .header("X-User-Roles", roles != null ? roles : "")
-                    .build();
+                    try {
+                        // Verify signature and expiration
+                        Claims claims = Jwts.parser()
+                                .verifyWith(publicKey)
+                                .build()
+                                .parseSignedClaims(token)
+                                .getPayload();
 
-            return chain.filter(exchange.mutate().request(mutatedRequest).build());
-        } catch (JwtException | IllegalArgumentException e) {
-            // Invalid signature, expired token, etc.
-            return unauthenticated(exchange, "Invalid JWT Token: " + e.getMessage());
-        }
+                        // Extract Claims
+                        String userId = claims.getSubject();
+                        String roles = claims.get("roles", String.class);
+
+                        // Mutate request to add headers
+                        ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
+                                .header("X-User-Id", userId != null ? userId : "")
+                                .header("X-User-Roles", roles != null ? roles : "")
+                                .build();
+
+                        return chain.filter(exchange.mutate().request(mutatedRequest).build());
+                    } catch (JwtException | IllegalArgumentException e) {
+                        return unauthenticated(exchange, "Invalid JWT Token: " + e.getMessage());
+                    }
+                });
     }
 
     private Mono<Void> unauthenticated(ServerWebExchange exchange, String message) {
-        // Here we throw an exception so that GlobalErrorWebExceptionHandler can catch it
-        // and return our standardized JSON format.
-        throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, message);
+        return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, message));
     }
 
     @Override
@@ -97,7 +108,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             throw new IllegalArgumentException("JWT Public Key is not configured");
         }
         
-        // Remove PEM headers if present
         String publicKeyContent = keyStr
                 .replace("-----BEGIN PUBLIC KEY-----", "")
                 .replace("-----END PUBLIC KEY-----", "")

@@ -49,6 +49,16 @@ spring:
                 name: authCircuitBreaker
                 fallbackUri: forward:/fallback/default
                 
+        - id: dummy-service
+          uri: lb://dummy-service
+          predicates:
+            - Path=/api/v1/dummy/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: dummyCircuitBreaker
+                fallbackUri: forward:/fallback/default
+                
         # TODO: Cấu hình các route cho các service khác dưới đây
         # - id: conversation-service
         #   uri: lb://conversation-service

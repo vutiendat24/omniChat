@@ -20,7 +20,7 @@
     <description>OmniChat Parent Project</description>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
         <spring-cloud.version>2024.0.0</spring-cloud.version>
         <mapstruct.version>1.6.0</mapstruct.version>
         <lombok.version>1.18.32</lombok.version>
@@ -36,6 +36,7 @@
         <module>config-server</module>
         <module>discovery-server</module>
         <module>auth-service</module>
+        <module>dummy-service</module>
     </modules>
 
     <dependencyManagement>
