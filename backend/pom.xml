@@ -35,6 +35,7 @@
         <module>api-gateway</module>
         <module>config-server</module>
         <module>discovery-server</module>
+        <module>auth-service</module>
     </modules>
 
     <dependencyManagement>
