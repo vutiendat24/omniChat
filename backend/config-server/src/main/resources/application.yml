@@ -1,0 +1,41 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native # Mặc định dùng native cho local dev
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config-repo, file:./config-repo
+        git:
+          uri: https://github.com/vutiendat24/omniChat-config-repo.git # URI mẫu
+          default-label: main
+          clone-on-start: true
+
+# Cấu hình bảo mật Basic Auth
+  security:
+    user:
+      name: admin
+      password: admin_password # Sẽ thay đổi qua ENV trên production
+
+# Cấu hình mã hoá RSA
+encrypt:
+  keyStore:
+    location: classpath:/keystore.p12
+    password: secret
+    alias: config-server-key
+    secret: secret
+
+# Cấu hình Actuator & Spring Cloud Bus (Refresh)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: env, refresh, busrefresh, health, info, encrypt, decrypt
+  endpoint:
+    health:
+      show-details: always
