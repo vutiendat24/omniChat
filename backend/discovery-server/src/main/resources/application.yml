@@ -1,0 +1,40 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: discovery-server
+  security:
+    user:
+      name: eureka
+      password: eureka_password # Change this in production via ENV var
+
+eureka:
+  instance:
+    hostname: localhost
+  client:
+    # Disable fetching registry and registering to itself since it is a standalone server
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    # IMPORTANT: Turn OFF self-preservation in dev to allow fast eviction of dead instances.
+    # MUST BE TURNED ON in production to prevent mass evictions during temporary network glitches.
+    enable-self-preservation: false
+    
+    # Interval to check for expired instances (in milliseconds). Default is 60000 (1 min).
+    # Set to 5 seconds for fast dev feedback.
+    eviction-interval-timer-in-ms: 5000 
+    
+    # Wait time before starting registry syncing. Useful when peering multiple Eureka nodes.
+    wait-time-in-ms-when-sync-empty: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always

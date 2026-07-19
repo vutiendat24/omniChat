@@ -14,7 +14,7 @@ Yêu cầu đặt ra là phải có một dịch vụ tập trung để quản l
 4. **Basic Auth**: Bản thân Config Server được bảo vệ bằng Spring Security (Basic Auth) nhằm tránh lộ lọt cấu hình ra ngoài khi không có xác thực.
 5. **Spring Cloud Bus & RabbitMQ**: Tích hợp sẵn `spring-cloud-starter-bus-amqp` để sau này kích hoạt tính năng refresh toàn hệ thống qua AMQP (RabbitMQ) thông qua Webhook của Git.
 
-## Hậu quả (Consequences)
+## Kết quả (Consequences)
 **Pros:**
 - Quản lý tập trung, phiên bản hoá tốt cấu hình của tất cả các services qua Git.
 - An toàn tuyệt đối với thông tin nhạy cảm bằng cơ chế mã hoá RSA Keystore, có thể lưu an toàn trên public/private Git Repo.
