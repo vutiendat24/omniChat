@@ -12,7 +12,7 @@ target/
 .settings
 .springBeans
 .sts4-cache
-
+docs/omnichat_cv.md.resolved
 ### IntelliJ IDEA ###
 .idea
 *.iws
