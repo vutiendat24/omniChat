@@ -7,8 +7,10 @@ import com.omnichat.tenant.domain.entity.OutboxEvent;
 import com.omnichat.tenant.domain.entity.Tenant;
 import com.omnichat.tenant.dto.CreateOwnerReq;
 import com.omnichat.tenant.dto.CreateTenantReq;
+import com.omnichat.tenant.dto.UpdateTenantReq;
 import com.omnichat.tenant.dto.TenantRes;
 import com.omnichat.tenant.exception.DuplicateResourceException;
+import com.omnichat.tenant.exception.ResourceNotFoundException;
 import com.omnichat.tenant.repository.OutboxEventRepository;
 import com.omnichat.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,9 +38,6 @@ public class TenantService {
             throw new DuplicateResourceException("Mã định danh (slug) đã được sử dụng");
         }
 
-        // Call Identity Service to create Owner Account
-        // If this fails, the transaction will rollback automatically since we don't catch it
-        // Or it will throw an exception before we save anything, which is fine
         String tempTenantId = UUID.randomUUID().toString();
         CreateOwnerReq ownerReq = CreateOwnerReq.builder()
                 .email(req.getOwnerEmail())
@@ -63,7 +62,6 @@ public class TenantService {
         
         tenant = tenantRepository.save(tenant);
 
-        // Save Event to Outbox
         Map<String, Object> payload = new HashMap<>();
         payload.put("tenantId", tenant.getId());
         payload.put("slug", tenant.getSlug());
@@ -85,8 +83,75 @@ public class TenantService {
 
         return TenantRes.builder()
                 .tenantId(tenant.getId())
+                .tenantName(tenant.getName())
+                .slug(tenant.getSlug())
                 .status(tenant.getStatus())
                 .createdAt(tenant.getCreatedAt())
+                .updatedAt(tenant.getUpdatedAt())
+                .build();
+    }
+
+    @Transactional
+    public TenantRes updateTenant(String tenantId, UpdateTenantReq request) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
+
+        if (!tenant.getVersion().equals(request.getVersion())) {
+            throw new org.springframework.orm.ObjectOptimisticLockingFailureException(Tenant.class, tenant.getId());
+        }
+
+        if (request.getTenantName() != null && !request.getTenantName().trim().isEmpty()) {
+            tenant.setName(request.getTenantName());
+        }
+        if (request.getLogoUrl() != null) {
+            tenant.setLogoUrl(request.getLogoUrl());
+        }
+        if (request.getIndustry() != null) {
+            tenant.setIndustry(request.getIndustry());
+        }
+        if (request.getContactEmail() != null) {
+            tenant.setContactEmail(request.getContactEmail());
+        }
+        if (request.getContactPhone() != null) {
+            tenant.setContactPhone(request.getContactPhone());
+        }
+        if (request.getAddress() != null) {
+            tenant.setAddress(request.getAddress());
+        }
+
+        Tenant savedTenant = tenantRepository.save(tenant);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("tenantId", savedTenant.getId());
+        payload.put("tenantName", savedTenant.getName());
+        payload.put("updatedFields", request);
+        payload.put("updatedAt", savedTenant.getUpdatedAt());
+
+        try {
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateType("Tenant")
+                    .aggregateId(savedTenant.getId())
+                    .type("tenant.updated")
+                    .payload(objectMapper.writeValueAsString(payload))
+                    .build();
+            outboxEventRepository.save(event);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize outbox event payload", e);
+            throw new RuntimeException("Failed to serialize outbox event payload", e);
+        }
+
+        return TenantRes.builder()
+                .tenantId(savedTenant.getId())
+                .tenantName(savedTenant.getName())
+                .slug(savedTenant.getSlug())
+                .logoUrl(savedTenant.getLogoUrl())
+                .industry(savedTenant.getIndustry())
+                .contactEmail(savedTenant.getContactEmail())
+                .contactPhone(savedTenant.getContactPhone())
+                .address(savedTenant.getAddress())
+                .status(savedTenant.getStatus())
+                .createdAt(savedTenant.getCreatedAt())
+                .updatedAt(savedTenant.getUpdatedAt())
                 .build();
     }
 }

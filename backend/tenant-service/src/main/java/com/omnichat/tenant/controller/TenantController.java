@@ -1,6 +1,7 @@
 package com.omnichat.tenant.controller;
 
 import com.omnichat.tenant.dto.CreateTenantReq;
+import com.omnichat.tenant.dto.UpdateTenantReq;
 import com.omnichat.tenant.dto.TenantRes;
 import com.omnichat.tenant.service.TenantService;
 import jakarta.validation.Valid;
@@ -21,5 +22,12 @@ public class TenantController {
     @PostMapping
     public ResponseEntity<TenantRes> createTenant(@Valid @RequestBody CreateTenantReq request) {
         return ResponseEntity.status(201).body(tenantService.createTenant(request));
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/{tenantId}")
+    public ResponseEntity<TenantRes> updateTenant(
+            @org.springframework.web.bind.annotation.PathVariable String tenantId,
+            @Valid @RequestBody UpdateTenantReq request) {
+        return ResponseEntity.ok(tenantService.updateTenant(tenantId, request));
     }
 }
