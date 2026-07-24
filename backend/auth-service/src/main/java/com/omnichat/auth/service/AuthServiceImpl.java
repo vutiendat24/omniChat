@@ -257,18 +257,37 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public TokenRes refresh(String token) {
-        return refreshTokenRepository.findByToken(token)
-                .map(this::verifyExpiration)
-                .map(RefreshToken::getUser)
-                .map(user -> {
-                    String accessToken = tokenProvider.generateToken(new CustomUserDetails(user));
-                    return TokenRes.builder()
-                            .accessToken(accessToken)
-                            .refreshToken(token)
-                            .expiresIn(accessTokenDurationMs)
-                            .build();
-                })
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(token)
                 .orElseThrow(() -> new TokenRefreshException(token, "Refresh token is not in database!"));
+
+        if (refreshToken.isRevoked()) {
+            // Replay attack!
+            refreshTokenRepository.deleteAllByUser(refreshToken.getUser());
+            throw new TokenRefreshException(token, "Refresh token was expired or revoked. Please make a new signin request");
+        }
+
+        if (refreshToken.getExpiryDate().compareTo(Instant.now()) < 0) {
+            refreshTokenRepository.delete(refreshToken);
+            throw new TokenRefreshException(token, "Refresh token was expired or revoked. Please make a new signin request");
+        }
+
+        User user = refreshToken.getUser();
+        if (user.getStatus() == UserStatus.SUSPENDED || user.getStatus() == UserStatus.LOCKED) {
+            throw new org.springframework.security.authentication.LockedException("Tài khoản của bạn đã bị khóa");
+        }
+
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        String accessToken = tokenProvider.generateToken(userDetails);
+        RefreshToken newRefreshToken = createRefreshToken(user.getId());
+
+        return TokenRes.builder()
+                .accessToken(accessToken)
+                .refreshToken(newRefreshToken.getToken())
+                .expiresIn(accessTokenDurationMs)
+                .build();
     }
 
     @Override
@@ -304,11 +323,5 @@ public class AuthServiceImpl implements AuthService {
         return refreshTokenRepository.save(refreshToken);
     }
 
-    private RefreshToken verifyExpiration(RefreshToken token) {
-        if (token.isRevoked() || token.getExpiryDate().compareTo(Instant.now()) < 0) {
-            refreshTokenRepository.delete(token);
-            throw new TokenRefreshException(token.getToken(), "Refresh token was expired or revoked. Please make a new signin request");
-        }
-        return token;
-    }
+
 }

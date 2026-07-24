@@ -418,4 +418,92 @@ class AuthServiceImplTest {
         LockedException exception = assertThrows(LockedException.class, () -> authService.googleLogin(googleSsoReq));
         assertEquals("Tài khoản của bạn đã bị khóa", exception.getMessage());
     }
+
+    @Test
+    void refresh_Success() {
+        User user = new User();
+        user.setId(1L);
+        user.setStatus(UserStatus.ACTIVE);
+
+        RefreshToken token = new RefreshToken();
+        token.setToken("valid-refresh-token");
+        token.setExpiryDate(Instant.now().plusSeconds(3600));
+        token.setRevoked(false);
+        token.setUser(user);
+
+        when(refreshTokenRepository.findByToken("valid-refresh-token")).thenReturn(Optional.of(token));
+        
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        when(tokenProvider.generateToken(any())).thenReturn("new-access-token");
+        
+        RefreshToken newToken = new RefreshToken();
+        newToken.setToken("new-refresh-token");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(newToken);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        TokenRes response = authService.refresh("valid-refresh-token");
+
+        assertEquals("new-access-token", response.getAccessToken());
+        assertEquals("new-refresh-token", response.getRefreshToken());
+        assertTrue(token.isRevoked());
+        verify(refreshTokenRepository, times(2)).save(any(RefreshToken.class)); // one for marking revoked, one for new token
+    }
+
+    @Test
+    void refresh_Expired() {
+        RefreshToken token = new RefreshToken();
+        token.setToken("expired-token");
+        token.setExpiryDate(Instant.now().minusSeconds(3600)); // expired
+        token.setRevoked(false);
+
+        when(refreshTokenRepository.findByToken("expired-token")).thenReturn(Optional.of(token));
+
+        com.omnichat.auth.exception.TokenRefreshException exception = assertThrows(
+            com.omnichat.auth.exception.TokenRefreshException.class, 
+            () -> authService.refresh("expired-token")
+        );
+
+        assertTrue(exception.getMessage().contains("Refresh token was expired or revoked"));
+        verify(refreshTokenRepository, times(1)).delete(token);
+    }
+
+    @Test
+    void refresh_ReplayAttack_RevokesAllTokens() {
+        User user = new User();
+        user.setId(1L);
+
+        RefreshToken token = new RefreshToken();
+        token.setToken("revoked-token");
+        token.setExpiryDate(Instant.now().plusSeconds(3600));
+        token.setRevoked(true); // Reused
+        token.setUser(user);
+
+        when(refreshTokenRepository.findByToken("revoked-token")).thenReturn(Optional.of(token));
+
+        com.omnichat.auth.exception.TokenRefreshException exception = assertThrows(
+            com.omnichat.auth.exception.TokenRefreshException.class, 
+            () -> authService.refresh("revoked-token")
+        );
+
+        assertTrue(exception.getMessage().contains("Refresh token was expired or revoked"));
+        verify(refreshTokenRepository, times(1)).deleteAllByUser(user);
+    }
+
+    @Test
+    void refresh_AccountLocked() {
+        User user = new User();
+        user.setId(1L);
+        user.setStatus(UserStatus.SUSPENDED);
+
+        RefreshToken token = new RefreshToken();
+        token.setToken("valid-token");
+        token.setExpiryDate(Instant.now().plusSeconds(3600));
+        token.setRevoked(false);
+        token.setUser(user);
+
+        when(refreshTokenRepository.findByToken("valid-token")).thenReturn(Optional.of(token));
+
+        LockedException exception = assertThrows(LockedException.class, () -> authService.refresh("valid-token"));
+        assertEquals("Tài khoản của bạn đã bị khóa", exception.getMessage());
+    }
 }

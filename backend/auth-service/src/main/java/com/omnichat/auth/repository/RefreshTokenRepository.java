@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
     Optional<RefreshToken> findByToken(String token);
     void deleteByUser_Id(Long userId);
+    void deleteAllByUser(com.omnichat.auth.domain.entity.User user);
 }
