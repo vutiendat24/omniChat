@@ -21,4 +21,13 @@ public class TenantMemberController {
             @Valid @RequestBody InviteMemberReq request) {
         return ResponseEntity.ok(tenantMemberService.inviteMember(tenantId, request));
     }
+
+    @DeleteMapping("/{userId}")
+    public ResponseEntity<Void> removeMember(
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @PathVariable String tenantId,
+            @PathVariable String userId) {
+        tenantMemberService.removeMember(currentUserId, tenantId, userId);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -240,8 +240,8 @@ graph TD
 | MOD-TENANT-05 | Cập nhật Team | Tenant Admin only | |
 | MOD-TENANT-06 | Xóa/Vô hiệu hóa Team | Unlink all members trước; reassign hội thoại đang gán cho team | |
 | MOD-TENANT-07 | Mời thành viên vào Tenant | Verify user tồn tại ở M01; Gán Role per Tenant; Email mời nếu chưa có account | |
-| MOD-TENANT-08 | Gán vào Team | User phải là member của Tenant trước | |
-| MOD-TENANT-09 | Remove Member | Lập tức revoke access; unassign hội thoại đang xử lý | |
+| MOD-TENANT-08 | Gán vào Team | User phải là member của Tenant trước; Tối đa 50 user mỗi request | Bỏ qua user đã có trong nhóm (Idempotency) |
+| MOD-TENANT-09 | Remove Member | Lập tức revoke access; unassign hội thoại đang xử lý; Không xóa Owner duy nhất | Không tự xóa chính mình; Fallback Auth Service Error |
 | MOD-TENANT-10 | Business Hours | Cấu hình per tenant per weekday; Dùng để pause SLA timer ngoài giờ | |
 | MOD-TENANT-11 | SLA Policy | First Response Time & Resolution Time per tenant; Chỉ áp dụng cho conversation MỚI | Thay đổi SLA không retroactive |
 

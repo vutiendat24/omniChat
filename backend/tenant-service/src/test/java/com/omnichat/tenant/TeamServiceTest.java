@@ -6,6 +6,12 @@ import com.omnichat.tenant.domain.entity.OutboxEvent;
 import com.omnichat.tenant.domain.entity.Plan;
 import com.omnichat.tenant.domain.entity.Team;
 import com.omnichat.tenant.domain.entity.Tenant;
+import com.omnichat.tenant.domain.entity.TenantMember;
+import com.omnichat.tenant.domain.entity.TenantMemberStatus;
+import com.omnichat.tenant.domain.entity.UserTeam;
+import com.omnichat.tenant.domain.entity.UserTeamId;
+import com.omnichat.tenant.dto.AssignMemberReq;
+import com.omnichat.tenant.dto.AssignMemberRes;
 import com.omnichat.tenant.dto.CreateTeamReq;
 import com.omnichat.tenant.dto.TeamRes;
 import com.omnichat.tenant.dto.UpdateTeamReq;
@@ -16,6 +22,8 @@ import com.omnichat.tenant.repository.OutboxEventRepository;
 import com.omnichat.tenant.repository.PlanRepository;
 import com.omnichat.tenant.repository.TeamRepository;
 import com.omnichat.tenant.repository.TenantRepository;
+import com.omnichat.tenant.repository.TenantMemberRepository;
+import com.omnichat.tenant.repository.UserTeamRepository;
 import com.omnichat.tenant.service.TeamService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,7 +33,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -47,6 +57,12 @@ public class TeamServiceTest {
 
     @Mock
     private OutboxEventRepository outboxEventRepository;
+
+    @Mock
+    private TenantMemberRepository tenantMemberRepository;
+
+    @Mock
+    private UserTeamRepository userTeamRepository;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -320,5 +336,75 @@ public class TeamServiceTest {
 
         assertThrows(ResourceNotFoundException.class, () -> teamService.deleteTeam(tenantId, teamId));
         verify(teamRepository, never()).delete(any(Team.class));
+    }
+
+    @Test
+    void testAssignMembers_Success() throws JsonProcessingException {
+        String teamId = UUID.randomUUID().toString();
+        AssignMemberReq req = new AssignMemberReq(List.of("user1", "user2"));
+
+        Team team = Team.builder().id(teamId).tenantId(tenantId).build();
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(team));
+
+        TenantMember member1 = TenantMember.builder().id("user1").status(TenantMemberStatus.ACTIVE).build();
+        TenantMember member2 = TenantMember.builder().id("user2").status(TenantMemberStatus.ACTIVE).build();
+        when(tenantMemberRepository.findByIdInAndTenantId(req.getUserIds(), tenantId)).thenReturn(List.of(member1, member2));
+
+        when(userTeamRepository.findExistingUserIdsInTeam(teamId, req.getUserIds())).thenReturn(Set.of("user1"));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        AssignMemberRes res = teamService.assignMembers(tenantId, teamId, req);
+
+        assertNotNull(res);
+        assertEquals(1, res.getAddedCount());
+        assertEquals(1, res.getIgnoredCount());
+        assertEquals("Gán thành viên thành công", res.getMessage());
+
+        verify(userTeamRepository, times(1)).saveAll(any());
+        verify(outboxEventRepository, times(1)).save(any(OutboxEvent.class));
+    }
+
+    @Test
+    void testAssignMembers_LimitExceeded_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        List<String> users = new java.util.ArrayList<>();
+        for (int i = 0; i < 51; i++) {
+            users.add("user" + i);
+        }
+        AssignMemberReq req = new AssignMemberReq(users);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> teamService.assignMembers(tenantId, teamId, req));
+        assertEquals("Chỉ được gán tối đa 50 thành viên trong một thao tác", ex.getMessage());
+    }
+
+    @Test
+    void testAssignMembers_UserIdNotInTenant_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        AssignMemberReq req = new AssignMemberReq(List.of("user1", "user2"));
+
+        Team team = Team.builder().id(teamId).tenantId(tenantId).build();
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(team));
+
+        TenantMember member1 = TenantMember.builder().id("user1").status(TenantMemberStatus.ACTIVE).build();
+        // user2 is missing in tenant
+        when(tenantMemberRepository.findByIdInAndTenantId(req.getUserIds(), tenantId)).thenReturn(List.of(member1));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> teamService.assignMembers(tenantId, teamId, req));
+        assertEquals("Một số thành viên không thuộc cửa hàng này", ex.getMessage());
+    }
+
+    @Test
+    void testAssignMembers_UserPending_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        AssignMemberReq req = new AssignMemberReq(List.of("user1"));
+
+        Team team = Team.builder().id(teamId).tenantId(tenantId).build();
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(team));
+
+        TenantMember member1 = TenantMember.builder().id("user1").status(TenantMemberStatus.PENDING).build();
+        when(tenantMemberRepository.findByIdInAndTenantId(req.getUserIds(), tenantId)).thenReturn(List.of(member1));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> teamService.assignMembers(tenantId, teamId, req));
+        assertEquals("Chỉ có thể gán các thành viên đã kích hoạt tài khoản", ex.getMessage());
     }
 }

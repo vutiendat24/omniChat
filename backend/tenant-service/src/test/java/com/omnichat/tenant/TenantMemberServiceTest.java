@@ -13,6 +13,7 @@ import com.omnichat.tenant.repository.OutboxEventRepository;
 import com.omnichat.tenant.repository.PlanRepository;
 import com.omnichat.tenant.repository.TenantMemberRepository;
 import com.omnichat.tenant.repository.TenantRepository;
+import com.omnichat.tenant.repository.UserTeamRepository;
 import com.omnichat.tenant.service.TenantMemberService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,9 @@ public class TenantMemberServiceTest {
 
     @Mock
     private AuthServiceClient authServiceClient;
+
+    @Mock
+    private UserTeamRepository userTeamRepository;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -133,5 +137,64 @@ public class TenantMemberServiceTest {
 
         DuplicateResourceException ex = assertThrows(DuplicateResourceException.class, () -> tenantMemberService.inviteMember(tenantId, req));
         assertEquals("Lời mời đã được gửi trước đó và đang chờ xác nhận", ex.getMessage());
+    }
+
+    @Test
+    void testRemoveMember_Success() throws JsonProcessingException {
+        String userId = UUID.randomUUID().toString();
+        String currentUserId = UUID.randomUUID().toString();
+        TenantMember member = TenantMember.builder().id(userId).email("user@example.com").roleId("ROLE_AGENT").tenantId(tenantId).build();
+
+        when(tenantMemberRepository.findByIdAndTenantId(userId, tenantId)).thenReturn(Optional.of(member));
+        when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
+
+        tenantMemberService.removeMember(currentUserId, tenantId, userId);
+
+        verify(userTeamRepository, times(1)).deleteByUserId(userId);
+        verify(tenantMemberRepository, times(1)).delete(member);
+        verify(authServiceClient, times(1)).revokeTokensByEmails(any());
+        verify(outboxEventRepository, times(1)).save(any(OutboxEvent.class));
+    }
+
+    @Test
+    void testRemoveMember_SelfRemove_ThrowsException() {
+        String userId = "self-id";
+        
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> tenantMemberService.removeMember(userId, tenantId, userId));
+        assertEquals("Bạn không thể tự xóa chính mình. Vui lòng sử dụng tính năng Rời khỏi cửa hàng (Leave Workspace)", ex.getMessage());
+        
+        verify(tenantMemberRepository, never()).delete(any());
+    }
+
+    @Test
+    void testRemoveMember_LastOwner_ThrowsException() {
+        String userId = UUID.randomUUID().toString();
+        String currentUserId = UUID.randomUUID().toString();
+        TenantMember member = TenantMember.builder().id(userId).email("owner@example.com").roleId("TENANT_OWNER").tenantId(tenantId).build();
+
+        when(tenantMemberRepository.findByIdAndTenantId(userId, tenantId)).thenReturn(Optional.of(member));
+        when(tenantMemberRepository.countByTenantIdAndRoleId(tenantId, "TENANT_OWNER")).thenReturn(1L);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> tenantMemberService.removeMember(currentUserId, tenantId, userId));
+        assertEquals("Không thể xóa chủ sở hữu duy nhất của cửa hàng", ex.getMessage());
+        
+        verify(tenantMemberRepository, never()).delete(any());
+    }
+
+    @Test
+    void testRemoveMember_AuthServiceFails_FallbackSuccess() throws JsonProcessingException {
+        String userId = UUID.randomUUID().toString();
+        String currentUserId = UUID.randomUUID().toString();
+        TenantMember member = TenantMember.builder().id(userId).email("user@example.com").roleId("ROLE_AGENT").tenantId(tenantId).build();
+
+        when(tenantMemberRepository.findByIdAndTenantId(userId, tenantId)).thenReturn(Optional.of(member));
+        when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
+        doThrow(new RuntimeException("Auth service down")).when(authServiceClient).revokeTokensByEmails(any());
+
+        assertDoesNotThrow(() -> tenantMemberService.removeMember(currentUserId, tenantId, userId));
+
+        verify(userTeamRepository, times(1)).deleteByUserId(userId);
+        verify(tenantMemberRepository, times(1)).delete(member);
+        verify(outboxEventRepository, times(1)).save(any(OutboxEvent.class));
     }
 }

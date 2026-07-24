@@ -4,25 +4,23 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omnichat.tenant.domain.entity.OutboxEvent;
 import com.omnichat.tenant.domain.entity.Plan;
-import com.omnichat.tenant.domain.entity.Team;
-import com.omnichat.tenant.domain.entity.Tenant;
-import com.omnichat.tenant.dto.CreateTeamReq;
-import com.omnichat.tenant.dto.TeamRes;
-import com.omnichat.tenant.dto.UpdateTeamReq;
+import com.omnichat.tenant.domain.entity.*;
+import com.omnichat.tenant.dto.*;
 import com.omnichat.tenant.exception.DuplicateResourceException;
 import com.omnichat.tenant.exception.QuotaExceededException;
 import com.omnichat.tenant.exception.ResourceNotFoundException;
-import com.omnichat.tenant.repository.OutboxEventRepository;
-import com.omnichat.tenant.repository.PlanRepository;
-import com.omnichat.tenant.repository.TeamRepository;
-import com.omnichat.tenant.repository.TenantRepository;
+import com.omnichat.tenant.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +31,8 @@ public class TeamService {
     private final TenantRepository tenantRepository;
     private final PlanRepository planRepository;
     private final OutboxEventRepository outboxEventRepository;
+    private final TenantMemberRepository tenantMemberRepository;
+    private final UserTeamRepository userTeamRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -169,5 +169,80 @@ public class TeamService {
             log.error("Failed to serialize outbox event payload", e);
             throw new RuntimeException("Failed to serialize outbox event payload", e);
         }
+    }
+
+    @Transactional
+    public AssignMemberRes assignMembers(String tenantId, String teamId, AssignMemberReq request) {
+        if (request.getUserIds() == null || request.getUserIds().isEmpty()) {
+            throw new IllegalArgumentException("Danh sách userIds không được để trống");
+        }
+        if (request.getUserIds().size() > 50) {
+            throw new IllegalArgumentException("Chỉ được gán tối đa 50 thành viên trong một thao tác");
+        }
+
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team không tồn tại hoặc không thuộc tenant này"));
+        
+        if (!team.getTenantId().equals(tenantId)) {
+            throw new ResourceNotFoundException("Team không tồn tại hoặc không thuộc tenant này");
+        }
+
+        List<TenantMember> members = tenantMemberRepository.findByIdInAndTenantId(request.getUserIds(), tenantId);
+        
+        if (members.size() != request.getUserIds().size()) {
+            throw new IllegalArgumentException("Một số thành viên không thuộc cửa hàng này");
+        }
+
+        for (TenantMember member : members) {
+            if (member.getStatus() == TenantMemberStatus.PENDING) {
+                throw new IllegalArgumentException("Chỉ có thể gán các thành viên đã kích hoạt tài khoản");
+            }
+            if (member.getStatus() == TenantMemberStatus.INACTIVE) {
+                throw new IllegalArgumentException("Không thể gán thành viên đang bị khóa");
+            }
+        }
+
+        Set<String> existingUserIds = userTeamRepository.findExistingUserIdsInTeam(teamId, request.getUserIds());
+        
+        int ignoredCount = existingUserIds.size();
+        int addedCount = 0;
+        List<UserTeam> newAssignments = new java.util.ArrayList<>();
+
+        for (String userId : request.getUserIds()) {
+            if (!existingUserIds.contains(userId)) {
+                UserTeamId utId = new UserTeamId(userId, teamId);
+                newAssignments.add(UserTeam.builder().id(utId).build());
+                addedCount++;
+            }
+        }
+
+        if (!newAssignments.isEmpty()) {
+            userTeamRepository.saveAll(newAssignments);
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("tenantId", tenantId);
+            payload.put("teamId", teamId);
+            payload.put("userIds", newAssignments.stream().map(ut -> ut.getId().getUserId()).collect(Collectors.toList()));
+            payload.put("assignedAt", LocalDateTime.now().toString());
+
+            try {
+                OutboxEvent event = OutboxEvent.builder()
+                        .aggregateType("Team")
+                        .aggregateId(teamId)
+                        .type("team.members_assigned")
+                        .payload(objectMapper.writeValueAsString(payload))
+                        .build();
+                outboxEventRepository.save(event);
+            } catch (JsonProcessingException e) {
+                log.error("Failed to serialize outbox event payload", e);
+                throw new RuntimeException("Failed to serialize outbox event payload", e);
+            }
+        }
+
+        return AssignMemberRes.builder()
+                .message("Gán thành viên thành công")
+                .addedCount(addedCount)
+                .ignoredCount(ignoredCount)
+                .build();
     }
 }

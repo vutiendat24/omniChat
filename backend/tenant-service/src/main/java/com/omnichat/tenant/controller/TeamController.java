@@ -1,5 +1,7 @@
 package com.omnichat.tenant.controller;
 
+import com.omnichat.tenant.dto.AssignMemberReq;
+import com.omnichat.tenant.dto.AssignMemberRes;
 import com.omnichat.tenant.dto.CreateTeamReq;
 import com.omnichat.tenant.dto.TeamRes;
 import com.omnichat.tenant.dto.UpdateTeamReq;
@@ -38,5 +40,13 @@ public class TeamController {
             @PathVariable String teamId) {
         teamService.deleteTeam(tenantId, teamId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{teamId}/members")
+    public ResponseEntity<AssignMemberRes> assignMembersToTeam(
+            @PathVariable String tenantId,
+            @PathVariable String teamId,
+            @Valid @RequestBody AssignMemberReq request) {
+        return ResponseEntity.ok(teamService.assignMembers(tenantId, teamId, request));
     }
 }

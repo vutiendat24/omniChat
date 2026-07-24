@@ -18,6 +18,8 @@ import com.omnichat.tenant.repository.OutboxEventRepository;
 import com.omnichat.tenant.repository.PlanRepository;
 import com.omnichat.tenant.repository.TenantMemberRepository;
 import com.omnichat.tenant.repository.TenantRepository;
+import com.omnichat.tenant.repository.UserTeamRepository;
+import com.omnichat.tenant.dto.RevokeTokensReq;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +41,7 @@ public class TenantMemberService {
     private final PlanRepository planRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final AuthServiceClient authServiceClient;
+    private final UserTeamRepository userTeamRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -123,5 +126,50 @@ public class TenantMemberService {
                 .message("Lời mời đã được gửi thành công")
                 .invitedAt(member.getInvitedAt())
                 .build();
+    }
+
+    @Transactional
+    public void removeMember(String currentUserId, String tenantId, String userIdToRemove) {
+        if (currentUserId != null && currentUserId.equals(userIdToRemove)) {
+            throw new IllegalArgumentException("Bạn không thể tự xóa chính mình. Vui lòng sử dụng tính năng Rời khỏi cửa hàng (Leave Workspace)");
+        }
+
+        TenantMember memberToRemove = tenantMemberRepository.findByIdAndTenantId(userIdToRemove, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Thành viên không tồn tại trong cửa hàng này"));
+
+        if ("TENANT_OWNER".equals(memberToRemove.getRoleId())) {
+            long ownerCount = tenantMemberRepository.countByTenantIdAndRoleId(tenantId, "TENANT_OWNER");
+            if (ownerCount <= 1) {
+                throw new IllegalArgumentException("Không thể xóa chủ sở hữu duy nhất của cửa hàng");
+            }
+        }
+
+        userTeamRepository.deleteByUserId(userIdToRemove);
+
+        tenantMemberRepository.delete(memberToRemove);
+
+        try {
+            authServiceClient.revokeTokensByEmails(new RevokeTokensReq(List.of(memberToRemove.getEmail())));
+        } catch (Exception e) {
+            log.error("Failed to call auth-service to revoke tokens for email: {}", memberToRemove.getEmail(), e);
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("tenantId", tenantId);
+        payload.put("userId", userIdToRemove);
+        payload.put("removedAt", LocalDateTime.now().toString());
+
+        try {
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateType("TenantMember")
+                    .aggregateId(userIdToRemove)
+                    .type("tenant.member_removed")
+                    .payload(objectMapper.writeValueAsString(payload))
+                    .build();
+            outboxEventRepository.save(event);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize outbox event payload", e);
+            throw new RuntimeException("Failed to serialize outbox event payload", e);
+        }
     }
 }

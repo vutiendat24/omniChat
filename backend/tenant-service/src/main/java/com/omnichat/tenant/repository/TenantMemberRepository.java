@@ -15,4 +15,10 @@ public interface TenantMemberRepository extends JpaRepository<TenantMember, Stri
     boolean existsByTenantIdAndEmail(String tenantId, String email);
 
     Optional<TenantMember> findByTenantIdAndEmail(String tenantId, String email);
+
+    java.util.List<TenantMember> findByIdInAndTenantId(java.util.List<String> ids, String tenantId);
+
+    long countByTenantIdAndRoleId(String tenantId, String roleId);
+
+    Optional<TenantMember> findByIdAndTenantId(String id, String tenantId);
 }
