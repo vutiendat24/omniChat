@@ -19,7 +19,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 
 ## 3. M02 — Tenant & Organization
 *(Phụ thuộc: M01)*
-- [ ] MOD-TENANT-01: Tạo mới Tenant (Onboarding) - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
+- [x] MOD-TENANT-01: Tạo mới Tenant (Onboarding) - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [ ] MOD-TENANT-02: Cập nhật hồ sơ Tenant - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [ ] MOD-TENANT-03: Quản lý trạng thái Tenant - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [ ] MOD-TENANT-04: Tạo mới Team - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)

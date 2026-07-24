@@ -358,5 +358,32 @@ public class AuthServiceImpl implements AuthService {
         return refreshTokenRepository.save(refreshToken);
     }
 
+    @Override
+    @Transactional
+    public void createOwnerAccount(com.omnichat.auth.dto.CreateOwnerReq request) {
+        Optional<User> existingUserOpt = userRepository.findByEmail(request.getEmail());
+        User user;
 
+        if (existingUserOpt.isPresent()) {
+            user = existingUserOpt.get();
+        } else {
+            user = User.builder()
+                    .email(request.getEmail())
+                    .fullName(request.getFullName())
+                    // Auto generate a random password, they can reset it later, or login via SSO
+                    .password(passwordEncoder.encode(UUID.randomUUID().toString()))
+                    .status(UserStatus.ACTIVE) // Auto active for tenant owner
+                    .authProvider(AuthProvider.LOCAL)
+                    .build();
+        }
+
+        Role ownerRole = roleRepository.findByName("ROLE_TENANT_OWNER")
+                .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_TENANT_OWNER").description("Tenant Owner").build()));
+        
+        user.getRoles().add(ownerRole);
+        userRepository.save(user);
+
+        // Note: Currently auth-service doesn't store tenantId mapping per user in DB. 
+        // We just assign the ROLE_TENANT_OWNER for now as per simple setup.
+    }
 }

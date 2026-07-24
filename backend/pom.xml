@@ -36,6 +36,7 @@
         <module>config-server</module>
         <module>discovery-server</module>
         <module>auth-service</module>
+        <module>tenant-service</module>
         <module>dummy-service</module>
     </modules>
 

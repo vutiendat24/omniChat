@@ -29,17 +29,30 @@ services:
       timeout: 5s
       retries: 5
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: omnichat-rabbitmq
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: omnichat-zookeeper
     ports:
-      - "5672:5672"
-      - "15672:15672"
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: omnichat-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   # ---------------- Core Microservices ----------------
   config-server:
@@ -87,11 +100,14 @@ services:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/omnichat_auth?createDatabaseIfNotExist=true&useSSL=false
       - SPRING_REDIS_HOST=redis
+      - SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS=kafka:29092
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_started
       config-server:
         condition: service_healthy
       discovery-server:
@@ -122,6 +138,32 @@ services:
       timeout: 5s
       retries: 5
 
+  tenant-service:
+    build:
+      context: ./tenant-service
+    container_name: omnichat-tenant-service
+    ports:
+      - "8088:8088"
+    environment:
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/omnichat_tenant?createDatabaseIfNotExist=true&useSSL=false
+      - SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8088/actuator/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+
   api-gateway:
     build:
       context: ./api-gateway
@@ -142,6 +184,159 @@ services:
       auth-service:
         condition: service_healthy
       dummy-service:
+        condition: service_healthy
+      conversation-service:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+      integration-service:
+        condition: service_healthy
+      routing-service:
+        condition: service_healthy
+      websocket-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  conversation-service:
+    build:
+      context: .
+      args:
+        SERVICE_NAME: conversation-service
+    container_name: omnichat-conversation-service
+    ports:
+      - "8086:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  customer-service:
+    build:
+      context: .
+      args:
+        SERVICE_NAME: customer-service
+    container_name: omnichat-customer-service
+    ports:
+      - "8083:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  integration-service:
+    build:
+      context: .
+      args:
+        SERVICE_NAME: integration-service
+    container_name: omnichat-integration-service
+    ports:
+      - "8084:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  routing-service:
+    build:
+      context: .
+      args:
+        SERVICE_NAME: routing-service
+    container_name: omnichat-routing-service
+    ports:
+      - "8087:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  websocket-service:
+    build:
+      context: .
+      args:
+        SERVICE_NAME: websocket-service
+    container_name: omnichat-websocket-service
+    ports:
+      - "8085:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://admin:admin@discovery-server:8761/eureka/
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+      discovery-server:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]

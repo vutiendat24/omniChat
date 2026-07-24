@@ -76,7 +76,7 @@ graph TD
     end
 
     DB_AUTH[("PostgreSQL Identity DB")]
-    DB_TENANT[("PostgreSQL Tenant DB")]
+    DB_TENANT[("MySQL Tenant DB")]
     DB_INTEG[("PostgreSQL Integration DB")]
     DB_LIVE[("PostgreSQL Livestream DB")]
     DB_CUST[("PostgreSQL CRM DB")]
@@ -95,7 +95,7 @@ graph TD
     GW --> ANALYT
     GW -- "WSS (STOMP)" --> RT
 
-    TENANT -. "gRPC: verify user" .-> AUTH
+    TENANT -. "REST: create owner / verify user" .-> AUTH
     INTEG -. "gRPC: get tenant/channel config" .-> TENANT
     INTEG -. "gRPC: verify JWT" .-> AUTH
     LIVE -. "gRPC: get tenant config" .-> TENANT
@@ -199,7 +199,7 @@ graph TD
 | Service | DB | Schema chính | Yêu cầu kỹ thuật đặc biệt |
 |---|---|---|---|
 | `auth-service` | PostgreSQL | `users` (PENDING_VERIFICATION/ACTIVE/LOCKED/SUSPENDED, failed_login_attempts, lockout_end, auth_provider, password nullable), `roles` (is_system, description), `permissions`, `credentials`, `token_blacklist`, `verification_tokens` (Redis TTL 24h), `refresh_tokens` (revoked, expiry_date) | Email Global Unique; bcrypt/Argon2 hash; Timing Attack resistant |
-| `tenant-service` | PostgreSQL | `tenants` (slug unique), `teams`, `tenant_members`, `sla_configs`, `business_hours`, `outbox` | Optimistic Locking (version field); Audit log mọi thay đổi |
+| `tenant-service` | MySQL | `tenants` (slug unique), `teams`, `tenant_members`, `sla_configs`, `business_hours`, `outbox` | Optimistic Locking (version field); Audit log mọi thay đổi |
 | `integration-service` | PostgreSQL | `channels` (ACTIVE/INACTIVE), `oauth_tokens` (AES-256 encrypted), `webhook_logs`, `outbound_queue`, `oauth_states` (Redis TTL 15min) | Token mã hóa AES-256 at rest; Channel unique toàn hệ thống |
 | `livestream-service` | PostgreSQL | `livestream_sessions` (LIVE/ENDED), `platform_connections`, `live_tokens` | Session lifecycle management |
 | `customer-service` | PostgreSQL | `customers`, `channel_identities` (1 customer ↔ nhiều platform_id), `merge_history` | Multi-channel identity mapping |
@@ -329,7 +329,7 @@ sequenceDiagram
     UI->>TENANT: POST /tenants (tenantName, slug, ownerEmail)
     TENANT->>TENANT: Validate slug (unique, regex)
     TENANT->>TENANT: Insert Tenant + Outbox event (1 transaction)
-    TENANT->>AUTH: gRPC CreateOwnerAccount (ownerEmail, role: TENANT_OWNER)
+    TENANT->>AUTH: REST POST /internal/users/owner (ownerEmail, role: TENANT_OWNER)
     alt AUTH OK
         AUTH-->>TENANT: userId assigned
         TENANT-->>UI: 201 Created (tenantId)
