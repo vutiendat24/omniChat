@@ -256,4 +256,69 @@ public class TeamServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> teamService.updateTeam(tenantId, teamId, req));
         verify(teamRepository, never()).save(any(Team.class));
     }
+
+    @Test
+    void testDeleteTeam_Success() throws JsonProcessingException {
+        String teamId = UUID.randomUUID().toString();
+        Team existingTeam = Team.builder()
+                .id(teamId)
+                .tenantId(tenantId)
+                .name("Team To Delete")
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(existingTeam));
+        when(teamRepository.countByTenantId(tenantId)).thenReturn(2L); // 2 teams total, can delete
+        
+        when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
+
+        teamService.deleteTeam(tenantId, teamId);
+
+        verify(teamRepository, times(1)).delete(existingTeam);
+        verify(outboxEventRepository, times(1)).save(argThat(event -> 
+            event.getAggregateType().equals("Team") && event.getType().equals("team.deleted")
+        ));
+    }
+
+    @Test
+    void testDeleteTeam_LastDefaultTeam_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        Team existingTeam = Team.builder()
+                .id(teamId)
+                .tenantId(tenantId)
+                .name("Last Team")
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(existingTeam));
+        when(teamRepository.countByTenantId(tenantId)).thenReturn(1L); // only 1 team left
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> teamService.deleteTeam(tenantId, teamId));
+        assertEquals("Không thể xóa nhóm mặc định của cửa hàng", ex.getMessage());
+        
+        verify(teamRepository, never()).delete(any(Team.class));
+    }
+
+    @Test
+    void testDeleteTeam_NotFound_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        
+        when(teamRepository.findById(teamId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> teamService.deleteTeam(tenantId, teamId));
+        verify(teamRepository, never()).delete(any(Team.class));
+    }
+
+    @Test
+    void testDeleteTeam_WrongTenant_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        Team existingTeam = Team.builder()
+                .id(teamId)
+                .tenantId("another-tenant-id")
+                .name("Team To Delete")
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(existingTeam));
+
+        assertThrows(ResourceNotFoundException.class, () -> teamService.deleteTeam(tenantId, teamId));
+        verify(teamRepository, never()).delete(any(Team.class));
+    }
 }

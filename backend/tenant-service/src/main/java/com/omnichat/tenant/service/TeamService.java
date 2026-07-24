@@ -135,4 +135,39 @@ public class TeamService {
                 .createdAt(savedTeam.getCreatedAt())
                 .build();
     }
+
+    @Transactional
+    public void deleteTeam(String tenantId, String teamId) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Nhóm không tồn tại hoặc đã bị xóa"));
+
+        if (!team.getTenantId().equals(tenantId)) {
+            throw new ResourceNotFoundException("Nhóm không tồn tại hoặc đã bị xóa");
+        }
+
+        long teamCount = teamRepository.countByTenantId(tenantId);
+        if (teamCount <= 1) {
+            throw new IllegalArgumentException("Không thể xóa nhóm mặc định của cửa hàng");
+        }
+
+        teamRepository.delete(team);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("teamId", teamId);
+        payload.put("tenantId", tenantId);
+        payload.put("deletedAt", java.time.LocalDateTime.now());
+
+        try {
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateType("Team")
+                    .aggregateId(teamId)
+                    .type("team.deleted")
+                    .payload(objectMapper.writeValueAsString(payload))
+                    .build();
+            outboxEventRepository.save(event);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize outbox event payload", e);
+            throw new RuntimeException("Failed to serialize outbox event payload", e);
+        }
+    }
 }

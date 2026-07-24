@@ -31,4 +31,12 @@ public class TeamController {
             @Valid @RequestBody UpdateTeamReq request) {
         return ResponseEntity.ok(teamService.updateTeam(tenantId, teamId, request));
     }
+
+    @DeleteMapping("/{teamId}")
+    public ResponseEntity<Void> deleteTeam(
+            @PathVariable String tenantId,
+            @PathVariable String teamId) {
+        teamService.deleteTeam(tenantId, teamId);
+        return ResponseEntity.noContent().build();
+    }
 }
