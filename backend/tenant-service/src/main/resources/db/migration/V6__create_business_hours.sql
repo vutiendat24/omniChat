@@ -1,0 +1,8 @@
+CREATE TABLE business_hours (
+    tenant_id VARCHAR(36) PRIMARY KEY,
+    timezone VARCHAR(50) NOT NULL,
+    schedule_json JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bh_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);

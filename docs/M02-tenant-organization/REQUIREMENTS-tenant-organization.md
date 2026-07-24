@@ -538,3 +538,64 @@ Luồng xử lý chính khi Tenant Admin muốn xóa (remove) hoàn toàn một 
 ### 7. Chỉ số phi chức năng
 - **Thời gian phản hồi:** API xử lý xóa và giao tiếp nội bộ phải hoàn thành < 800ms. Bắt buộc sử dụng Transaction để xóa liên kết bảng `tenant_member` và `user_team` một cách nguyên tử.
 - **Audit Logging:** Hành động xóa thành viên phải được lưu vết (người thực hiện, người bị xóa, thời gian) vào Audit Log của Tenant phục vụ tra soát bảo mật.
+
+## MOD-TENANT-10 - Cấu hình giờ làm việc (Business Hours)
+
+### 1. Mô tả nghiệp vụ đầy đủ
+Luồng xử lý chính khi Tenant Admin muốn thiết lập thời gian làm việc tiêu chuẩn của không gian làm việc:
+1. **Truy cập cấu hình:** Người dùng (Tenant Admin) truy cập vào Cài đặt tổ chức -> Giờ làm việc.
+2. **Lấy cấu hình hiện tại:** Hệ thống gọi API để lấy thiết lập hiện hành (hoặc thiết lập mặc định 24/7 nếu chưa từng cấu hình).
+3. **Chỉnh sửa:** Người dùng chọn múi giờ (Timezone) và tùy chỉnh các ngày làm việc trong tuần (từ Thứ Hai đến Chủ Nhật). Với mỗi ngày, có thể chọn là "Ngày nghỉ" hoặc cấu hình nhiều "Ca làm việc" (Ví dụ: 08:00 - 12:00 và 13:30 - 17:30).
+4. **Lưu cấu hình:** Người dùng ấn "Lưu".
+5. **Kiểm tra hợp lệ:** Hệ thống kiểm tra múi giờ có hợp lệ không, các ca làm việc trong cùng một ngày có bị giao nhau (overlap) hoặc giờ kết thúc trước giờ bắt đầu hay không.
+6. **Lưu trữ:** Lưu xuống cơ sở dữ liệu `tenant-service` (cập nhật hoặc tạo mới bản ghi `business_hours` của Tenant).
+7. **Publish sự kiện:** Gửi sự kiện `tenant.business_hours_updated` qua Message Broker để các module khác (VD: `livestream-service`, `conversation-service`) lấy cấu hình mới nhằm kích hoạt tin nhắn OOO (Out of Office) hoặc tạm dừng đồng hồ SLA.
+
+### 2. Input
+- **Dữ liệu đầu vào (REST API Request):**
+  - `tenantId` (UUID, lấy từ token xác thực, Bắt buộc).
+  - Payload JSON bao gồm:
+    - `timezone`: Chuỗi (VD: "Asia/Ho_Chi_Minh").
+    - `schedule`: Danh sách 7 phần tử (đại diện cho 7 ngày trong tuần). Mỗi phần tử gồm:
+      - `dayOfWeek`: Enum (MONDAY -> SUNDAY).
+      - `isDayOff`: Boolean (True nếu là ngày nghỉ).
+      - `shifts`: Danh sách các ca làm việc (chỉ bắt buộc nếu `isDayOff` = false), mỗi ca gồm `startTime` và `endTime` (định dạng `HH:mm`).
+- **Nguồn kích hoạt:** Frontend Web App (Thao tác của Tenant Admin).
+
+### 3. Output
+- **Kết quả trả về (API Response):**
+  - Trả về mã HTTP `200 OK` kèm theo JSON cấu hình giờ làm việc vừa được cập nhật.
+- **Nơi lưu:** Database (`tenant-service`, bảng `business_hours`).
+- **Nơi gửi tiếp:** Publish Kafka/RabbitMQ Event `tenant.business_hours_updated` chứa toàn bộ payload cấu hình giờ làm việc của Tenant.
+
+### 4. Business rule / Ràng buộc
+- **Phân quyền (Authorization):** Chỉ `Tenant Admin` hoặc `Tenant Owner` mới được phép cấu hình.
+- **Timezone hợp lệ:** Tham số `timezone` phải thuộc chuẩn IANA Timezone (VD: `Asia/Ho_Chi_Minh`, `UTC`).
+- **Định dạng giờ:** `startTime` và `endTime` phải tuân theo định dạng chuẩn ISO-8601 (24-hour) `HH:mm` (VD: `08:00`, `17:30`).
+- **Logic thời gian:** `endTime` của một ca bắt buộc phải lớn hơn (sau) `startTime`.
+- **Ràng buộc ca làm việc:** Nếu `isDayOff` là `false`, mảng `shifts` không được phép rỗng.
+- **Không giao nhau (No Overlap):** Các khoảng thời gian (`shifts`) trong cùng một ngày không được phép chồng chéo lên nhau (VD: Ca 1 từ `08:00 - 12:00` thì ca 2 không thể là `11:00 - 15:00`).
+
+### 5. Edge case cần xử lý
+- **Lỗi giờ giao nhau (Overlap):** Nếu user cố tình submit các ca làm việc chồng chéo (qua API), hệ thống chặn lại ở mức Validate và trả về HTTP `400 Bad Request` kèm thông điệp báo lỗi rõ ngày và ca nào bị trùng.
+- **Giờ kết thúc trước giờ bắt đầu:** Trả về `400 Bad Request`.
+- **Cấu hình mặc định:** Nếu chưa từng cấu hình, API Get `business_hours` tự động trả về mặc định là múi giờ UTC, 7 ngày đều là ngày làm việc (không có day off), và 1 ca duy nhất `00:00 - 23:59` (hoặc `24/7`).
+- **Nhiều request đồng thời (Race Condition):** Thiết kế API cập nhật theo hình thức Upsert (Update or Insert) bằng cơ chế khóa bản ghi (Optimistic Locking hoặc Unique Constraint `tenant_id`) để tránh tạo ra 2 bản ghi cấu hình cho cùng một Tenant.
+
+### 6. Acceptance criteria
+- **Scenario 1: Xem giờ làm việc mặc định**
+  - **Given** Tenant chưa từng cài đặt giờ làm việc.
+  - **When** Tenant Admin gọi API GET `/api/v1/tenants/{tenantId}/business-hours`.
+  - **Then** Trả về HTTP `200 OK` cùng payload cấu hình mặc định (7 ngày làm việc, `00:00` - `23:59`).
+- **Scenario 2: Cập nhật giờ làm việc thành công**
+  - **Given** Tenant Admin nhập `timezone` là "Asia/Ho_Chi_Minh", Thứ 2 đến Thứ 6 làm việc `08:00-12:00` và `13:00-17:00`, Thứ 7 - CN là ngày nghỉ (`isDayOff = true`).
+  - **When** gọi API PUT/PATCH.
+  - **Then** Trả về HTTP `200 OK`. Dữ liệu được lưu chính xác trong database. Sự kiện `tenant.business_hours_updated` được phát hành.
+- **Scenario 3: Validation lỗi ca làm việc**
+  - **Given** Tenant Admin thiết lập Thứ Hai có ca 1 `08:00 - 12:00` và ca 2 `10:00 - 15:00`.
+  - **When** gọi API PUT/PATCH cập nhật.
+  - **Then** Trả về HTTP `400 Bad Request` với message "Ca làm việc bị trùng lặp trong ngày Thứ Hai". Dữ liệu cũ không thay đổi.
+
+### 7. Chỉ số phi chức năng
+- **Thời gian phản hồi:** API Get và Cập nhật xử lý < 200ms.
+- **Khả năng chịu tải (Read-Heavy):** Endpoint lấy giờ làm việc không được thiết kế để gọi liên tục từ các module khác mỗi khi có tin nhắn mới. Dữ liệu này phải được Event-Driven sang các module khác (như Chat/Livestream) để lưu vào Redis Cache / In-memory, đảm bảo hệ thống không bị thắt cổ chai ở `tenant-service`.
