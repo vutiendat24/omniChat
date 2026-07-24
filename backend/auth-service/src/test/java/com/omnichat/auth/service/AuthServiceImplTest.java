@@ -5,6 +5,9 @@ import com.omnichat.auth.domain.entity.User;
 import com.omnichat.auth.domain.entity.UserStatus;
 import com.omnichat.auth.domain.entity.VerificationToken;
 import com.omnichat.auth.domain.entity.RefreshToken;
+import com.omnichat.auth.domain.entity.AuthProvider;
+import com.omnichat.auth.dto.GoogleSsoReq;
+import com.omnichat.auth.dto.GoogleUserInfo;
 import com.omnichat.auth.dto.LoginReq;
 import com.omnichat.auth.dto.MessageRes;
 import com.omnichat.auth.dto.RegisterReq;
@@ -70,11 +73,15 @@ class AuthServiceImplTest {
     @Mock
     private KafkaProducerService kafkaProducerService;
 
+    @Mock
+    private GoogleOAuthService googleOAuthService;
+
     @InjectMocks
     private AuthServiceImpl authService;
 
     private RegisterReq registerReq;
     private LoginReq loginReq;
+    private GoogleSsoReq googleSsoReq;
 
     @BeforeEach
     void setUp() {
@@ -91,6 +98,9 @@ class AuthServiceImplTest {
         loginReq = new LoginReq();
         loginReq.setEmail("test@example.com");
         loginReq.setPassword("Password123!");
+
+        googleSsoReq = new GoogleSsoReq();
+        googleSsoReq.setCode("valid-auth-code");
     }
 
     @Test
@@ -320,5 +330,92 @@ class AuthServiceImplTest {
         assertEquals(0, user.getFailedLoginAttempts());
         assertNull(user.getLockoutEnd());
         verify(userRepository, times(1)).save(user); // Wait, saved when unlocked! Wait, wait, if authentication succeeds, it's saved twice. But we verify times at least 1.
+    }
+
+    @Test
+    void googleLogin_NewUser_CreatesActiveAccountAndReturnsTokens() {
+        GoogleUserInfo googleUser = GoogleUserInfo.builder()
+                .id("12345")
+                .email("newuser@gmail.com")
+                .name("New Google User")
+                .picture("pic.jpg")
+                .build();
+        when(googleOAuthService.verifyCodeAndGetUserInfo("valid-auth-code")).thenReturn(googleUser);
+        when(userRepository.findByEmail("newuser@gmail.com")).thenReturn(Optional.empty());
+        
+        Role role = new Role();
+        role.setName("ROLE_AGENT");
+        when(roleRepository.findByName(anyString())).thenReturn(Optional.of(role));
+
+        User savedUser = new User();
+        savedUser.setId(2L);
+        savedUser.setEmail("newuser@gmail.com");
+        savedUser.setFullName("New Google User");
+        savedUser.setStatus(UserStatus.ACTIVE);
+        savedUser.setAuthProvider(AuthProvider.GOOGLE);
+        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(savedUser));
+
+        when(tokenProvider.generateToken(any())).thenReturn("access-token-google");
+
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setToken("refresh-token-google");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(refreshToken);
+
+        TokenRes response = authService.googleLogin(googleSsoReq);
+
+        assertEquals("access-token-google", response.getAccessToken());
+        assertEquals("refresh-token-google", response.getRefreshToken());
+        verify(userRepository, times(1)).save(any(User.class));
+        verify(kafkaProducerService, times(1)).sendUserRegisteredEvent(any());
+    }
+
+    @Test
+    void googleLogin_ExistingLocalUser_LinksAccountAndReturnsTokens() {
+        GoogleUserInfo googleUser = GoogleUserInfo.builder()
+                .id("12345")
+                .email("test@example.com")
+                .name("Test User")
+                .build();
+        when(googleOAuthService.verifyCodeAndGetUserInfo("valid-auth-code")).thenReturn(googleUser);
+        
+        User existingUser = new User();
+        existingUser.setId(1L);
+        existingUser.setEmail("test@example.com");
+        existingUser.setStatus(UserStatus.ACTIVE);
+        existingUser.setAuthProvider(AuthProvider.LOCAL);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any(User.class))).thenReturn(existingUser);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+
+        when(tokenProvider.generateToken(any())).thenReturn("access-token");
+        
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setToken("refresh-token");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(refreshToken);
+
+        TokenRes response = authService.googleLogin(googleSsoReq);
+
+        assertEquals("access-token", response.getAccessToken());
+        assertEquals(AuthProvider.LOCAL_AND_GOOGLE, existingUser.getAuthProvider());
+        verify(userRepository, times(1)).save(existingUser);
+        verify(kafkaProducerService, never()).sendUserRegisteredEvent(any());
+    }
+
+    @Test
+    void googleLogin_LockedUser_ThrowsLockedException() {
+        GoogleUserInfo googleUser = GoogleUserInfo.builder()
+                .id("12345")
+                .email("locked@gmail.com")
+                .build();
+        when(googleOAuthService.verifyCodeAndGetUserInfo("valid-auth-code")).thenReturn(googleUser);
+        
+        User existingUser = new User();
+        existingUser.setEmail("locked@gmail.com");
+        existingUser.setStatus(UserStatus.SUSPENDED);
+        when(userRepository.findByEmail("locked@gmail.com")).thenReturn(Optional.of(existingUser));
+
+        LockedException exception = assertThrows(LockedException.class, () -> authService.googleLogin(googleSsoReq));
+        assertEquals("Tài khoản của bạn đã bị khóa", exception.getMessage());
     }
 }

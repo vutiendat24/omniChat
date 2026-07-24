@@ -29,6 +29,11 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    @PostMapping("/google-login")
+    public ResponseEntity<TokenRes> googleLogin(@Valid @RequestBody GoogleSsoReq request) {
+        return ResponseEntity.ok(authService.googleLogin(request));
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<TokenRes> refresh(@RequestParam("token") String refreshToken) {
         return ResponseEntity.ok(authService.refresh(refreshToken));

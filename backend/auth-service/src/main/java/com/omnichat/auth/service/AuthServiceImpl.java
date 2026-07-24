@@ -22,12 +22,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import com.omnichat.auth.domain.entity.UserStatus;
 import com.omnichat.auth.domain.entity.VerificationToken;
-import com.omnichat.auth.dto.UserRegisteredEvent;
+import com.omnichat.auth.domain.entity.AuthProvider;
 import com.omnichat.auth.repository.VerificationTokenRepository;
 
 @Service
@@ -43,6 +45,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
     private final KafkaProducerService kafkaProducerService;
+    private final GoogleOAuthService googleOAuthService;
 
     @Value("${jwt.refresh-expiration-ms}")
     private Long refreshTokenDurationMs;
@@ -77,6 +80,7 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(request.getFullName())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .status(UserStatus.PENDING_VERIFICATION)
+                .authProvider(AuthProvider.LOCAL)
                 .build();
 
         String roleName = request.getRole() != null ? request.getRole().toUpperCase() : "AGENT";
@@ -187,6 +191,67 @@ public class AuthServiceImpl implements AuthService {
             userRepository.save(user);
             throw new org.springframework.security.authentication.BadCredentialsException("Tài khoản hoặc mật khẩu không chính xác");
         }
+    }
+
+    @Override
+    @Transactional
+    public TokenRes googleLogin(GoogleSsoReq request) {
+        GoogleUserInfo googleUserInfo = googleOAuthService.verifyCodeAndGetUserInfo(request.getCode());
+        String email = googleUserInfo.getEmail();
+
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        User user;
+
+        if (userOpt.isPresent()) {
+            user = userOpt.get();
+            if (user.getStatus() == UserStatus.SUSPENDED) {
+                throw new org.springframework.security.authentication.LockedException("Tài khoản của bạn đã bị khóa");
+            }
+            if (user.getStatus() == UserStatus.LOCKED) {
+                if (user.getLockoutEnd() != null && user.getLockoutEnd().compareTo(Instant.now()) > 0) {
+                    throw new org.springframework.security.authentication.LockedException("Tài khoản đang bị tạm khóa, vui lòng thử lại sau");
+                } else {
+                    user.setStatus(UserStatus.ACTIVE);
+                    user.setFailedLoginAttempts(0);
+                    user.setLockoutEnd(null);
+                }
+            }
+            if (user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+                user.setStatus(UserStatus.ACTIVE);
+            }
+            if (user.getAuthProvider() == AuthProvider.LOCAL) {
+                user.setAuthProvider(AuthProvider.LOCAL_AND_GOOGLE);
+            }
+            user = userRepository.save(user);
+        } else {
+            User newUser = new User();
+            newUser.setEmail(email);
+            newUser.setFullName(googleUserInfo.getName());
+            newUser.setStatus(UserStatus.ACTIVE);
+            newUser.setAuthProvider(AuthProvider.GOOGLE);
+            
+            Role userRole = roleRepository.findByName("ROLE_AGENT")
+                    .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
+            Set<Role> roles = new HashSet<>();
+            roles.add(userRole);
+            newUser.setRoles(roles);
+            
+            user = userRepository.save(newUser);
+            
+            // publish event
+            UserRegisteredEvent event = new UserRegisteredEvent(user.getEmail(), user.getFullName(), null);
+            kafkaProducerService.sendUserRegisteredEvent(event);
+        }
+
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        String accessToken = tokenProvider.generateToken(userDetails);
+        RefreshToken refreshToken = createRefreshToken(user.getId());
+
+        return TokenRes.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken.getToken())
+                .expiresIn(accessTokenDurationMs)
+                .build();
     }
 
     @Override

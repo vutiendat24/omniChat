@@ -12,6 +12,7 @@ public interface AuthService {
     MessageRes register(RegisterReq request);
     MessageRes verifyEmail(String token);
     TokenRes login(LoginReq request);
+    TokenRes googleLogin(com.omnichat.auth.dto.GoogleSsoReq request);
     TokenRes refresh(String refreshToken);
     void logout(String accessToken, String refreshToken);
     IntrospectRes introspect(IntrospectReq request);
