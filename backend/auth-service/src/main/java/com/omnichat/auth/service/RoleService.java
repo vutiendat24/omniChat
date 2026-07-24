@@ -10,4 +10,7 @@ public interface RoleService {
     RoleRes createRole(RoleReq request);
     RoleRes updateRole(Long roleId, RoleReq request);
     void deleteRole(Long roleId);
+    
+    void assignPermissionsToRole(Long roleId, com.omnichat.auth.dto.AssignPermissionsReq request);
+    java.util.List<com.omnichat.auth.dto.PermissionRes> getAllPermissions();
 }

@@ -40,4 +40,11 @@ public class RoleController {
         roleService.deleteRole(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/{id}/permissions")
+    public ResponseEntity<Void> assignPermissions(@PathVariable("id") Long id,
+                                                  @Valid @RequestBody com.omnichat.auth.dto.AssignPermissionsReq request) {
+        roleService.assignPermissionsToRole(id, request);
+        return ResponseEntity.ok().build();
+    }
 }

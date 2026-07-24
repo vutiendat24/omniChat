@@ -8,6 +8,9 @@ import com.omnichat.auth.repository.RoleRepository;
 import com.omnichat.auth.repository.UserRepository;
 import com.omnichat.auth.service.RoleService;
 
+import com.omnichat.auth.dto.AssignPermissionsReq;
+import com.omnichat.auth.dto.PermissionRes;
+import com.omnichat.auth.repository.PermissionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,12 +18,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class RoleServiceImpl implements RoleService {
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final PermissionRepository permissionRepository;
 
     @Override
     public Page<RoleRes> getRoles(String name, Pageable pageable) {
@@ -85,6 +93,32 @@ public class RoleServiceImpl implements RoleService {
         }
 
         roleRepository.delete(role);
+    }
+
+    @Override
+    public List<PermissionRes> getAllPermissions() {
+        return permissionRepository.findAll().stream()
+                .map(p -> PermissionRes.builder()
+                        .id(p.getId())
+                        .name(p.getName())
+                        .description(p.getDescription())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void assignPermissionsToRole(Long roleId, AssignPermissionsReq request) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new RoleException(HttpStatus.NOT_FOUND, "Không tìm thấy vai trò"));
+
+        if (role.getName().equals("SUPER_ADMIN")) {
+            throw new RoleException(HttpStatus.FORBIDDEN, "Không thể thay đổi quyền của vai trò hệ thống");
+        }
+
+        List<com.omnichat.auth.domain.entity.Permission> permissions = permissionRepository.findAllById(request.getPermissionIds());
+        role.setPermissions(new HashSet<>(permissions));
+        roleRepository.save(role);
     }
 
     private RoleRes mapToRoleRes(Role role) {

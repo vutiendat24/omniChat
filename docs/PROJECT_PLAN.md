@@ -14,7 +14,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 - [x] MOD-IAM-04: Làm mới Token (Refresh JWT) - [REQUIREMENTS](M01-identity-access/REQUIREMENTS-identity-access.md)
 - [x] MOD-IAM-05: Đăng xuất (Logout & Blacklist Token) - [REQUIREMENTS](M01-identity-access/REQUIREMENTS-identity-access.md)
 - [x] MOD-IAM-06: Quản lý Vai trò (Role Management) - [REQUIREMENTS](M01-identity-access/REQUIREMENTS-identity-access.md)
-- [ ] MOD-IAM-07: Quản lý Phân quyền (Permission / RBAC Management) - [REQUIREMENTS](M01-identity-access/REQUIREMENTS-identity-access.md)
+- [x] MOD-IAM-07: Quản lý Phân quyền (Permission / RBAC Management) - [REQUIREMENTS](M01-identity-access/REQUIREMENTS-identity-access.md)
 - [ ] MOD-IAM-08: Lấy thông tin tài khoản hiện tại (Get Current Profile / Introspect) - [REQUIREMENTS](M01-identity-access/REQUIREMENTS-identity-access.md)
 
 ## 3. M02 — Tenant & Organization
