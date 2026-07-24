@@ -1,4 +1,4 @@
-package com.omnichat.auth.service;
+package com.omnichat.auth.service.implement;
 
 import com.omnichat.auth.domain.entity.RefreshToken;
 import com.omnichat.auth.domain.entity.Role;
@@ -12,6 +12,10 @@ import com.omnichat.auth.repository.RoleRepository;
 import com.omnichat.auth.repository.UserRepository;
 import com.omnichat.auth.security.CustomUserDetails;
 import com.omnichat.auth.security.JwtTokenProvider;
+import com.omnichat.auth.service.AuthService;
+import com.omnichat.auth.service.GoogleOAuthService;
+import com.omnichat.auth.service.KafkaProducerService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;

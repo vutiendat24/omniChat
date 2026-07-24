@@ -20,6 +20,8 @@ import com.omnichat.auth.repository.UserRepository;
 import com.omnichat.auth.repository.VerificationTokenRepository;
 import com.omnichat.auth.security.CustomUserDetails;
 import com.omnichat.auth.security.JwtTokenProvider;
+import com.omnichat.auth.service.implement.AuthServiceImpl;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

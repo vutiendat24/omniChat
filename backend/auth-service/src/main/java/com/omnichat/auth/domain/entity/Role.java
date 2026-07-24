@@ -17,4 +17,11 @@ public class Role {
 
     @Column(unique = true, nullable = false, length = 50)
     private String name; // e.g. ROLE_ADMIN, ROLE_AGENT, ROLE_SUPERVISOR
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "is_system", nullable = false)
+    @Builder.Default
+    private boolean isSystem = false;
 }

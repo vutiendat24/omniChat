@@ -1,6 +1,8 @@
-package com.omnichat.auth.service;
+package com.omnichat.auth.service.implement;
 
 import com.omnichat.auth.dto.GoogleUserInfo;
+import com.omnichat.auth.service.GoogleOAuthService;
+
 import org.springframework.stereotype.Service;
 
 @Service
