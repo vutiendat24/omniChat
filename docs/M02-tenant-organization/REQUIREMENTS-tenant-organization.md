@@ -208,7 +208,9 @@ Luồng xử lý chính khi tạo một Team (Nhóm/Phòng ban) mới trong mộ
 ### 4. Business rule / Ràng buộc
 - **Phân quyền (Authorization):** Chỉ có `Tenant Admin` mới được phép tạo Team. Nhân viên bình thường (Agent) không có quyền truy cập chức năng này.
 - **Tính duy nhất:** `teamName` phải là duy nhất (Unique) trong phạm vi của một `tenantId`. Hệ thống kiểm tra trùng lặp không phân biệt chữ hoa chữ thường (Case-insensitive) (VD: "Ca Sáng" và "ca sáng" bị coi là trùng).
-- **Giới hạn số lượng (Quota):** Số lượng Team tối đa được phép tạo phụ thuộc vào Gói cước (Plan) mà Tenant đang sử dụng (VD: Gói Basic tối đa 3 team, Gói Pro không giới hạn). Hệ thống bắt buộc phải check quota trước khi cho phép insert CSDL.
+- **Giới hạn số lượng (Quota):** Số lượng Team tối đa được phép tạo phụ thuộc vào Gói cước (Subscription Plan) mà Tenant đang sử dụng (VD: Gói Basic tối đa 3 team, Gói Pro không giới hạn). 
+  - **Quản lý Gói (Database Design):** Hệ thống sử dụng bảng `plans` để lưu thông tin các gói cước bao gồm: `id` (VARCHAR), `name` (Tên gói), `max_teams` (Số lượng team tối đa, nếu là -1 hoặc NULL tức là không giới hạn), `max_users` (Số lượng user tối đa), v.v.
+  - Khi check Quota, hệ thống sẽ query bảng `plans` dựa trên `plan_id` của Tenant để lấy ra `max_teams` và so sánh.
 - **Quy tắc tên:** `teamName` có độ dài từ 3 đến 50 ký tự, không chứa các ký tự đặc biệt nguy hiểm (chấp nhận chữ cái, số, khoảng trắng, gạch ngang, gạch dưới).
 
 ### 5. Edge case cần xử lý

@@ -6,6 +6,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.dao.DataIntegrityViolationException;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,6 +45,22 @@ public class GlobalExceptionHandler {
         Map<String, String> error = new HashMap<>();
         error.put("error", "Conflict");
         error.put("message", "Dữ liệu đã bị thay đổi bởi người khác, vui lòng tải lại trang.");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<Map<String, String>> handleQuotaExceededException(QuotaExceededException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Forbidden");
+        error.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Conflict");
+        error.put("message", "Tên nhóm đã tồn tại trong hệ thống"); // Default message for UK
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 
