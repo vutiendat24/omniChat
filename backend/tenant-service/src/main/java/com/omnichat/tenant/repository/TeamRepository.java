@@ -8,4 +8,5 @@ import org.springframework.stereotype.Repository;
 public interface TeamRepository extends JpaRepository<Team, String> {
     long countByTenantId(String tenantId);
     boolean existsByTenantIdAndNameIgnoreCase(String tenantId, String name);
+    boolean existsByTenantIdAndNameIgnoreCaseAndIdNot(String tenantId, String name, String id);
 }

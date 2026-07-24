@@ -30,6 +30,9 @@ public class Team {
     @Column(length = 255)
     private String description;
 
+    @Version
+    private Long version;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

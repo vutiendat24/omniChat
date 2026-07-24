@@ -2,6 +2,7 @@ package com.omnichat.tenant.controller;
 
 import com.omnichat.tenant.dto.CreateTeamReq;
 import com.omnichat.tenant.dto.TeamRes;
+import com.omnichat.tenant.dto.UpdateTeamReq;
 import com.omnichat.tenant.service.TeamService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,5 +22,13 @@ public class TeamController {
             @PathVariable String tenantId,
             @Valid @RequestBody CreateTeamReq request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(teamService.createTeam(tenantId, request));
+    }
+
+    @PutMapping("/{teamId}")
+    public ResponseEntity<TeamRes> updateTeam(
+            @PathVariable String tenantId,
+            @PathVariable String teamId,
+            @Valid @RequestBody UpdateTeamReq request) {
+        return ResponseEntity.ok(teamService.updateTeam(tenantId, teamId, request));
     }
 }

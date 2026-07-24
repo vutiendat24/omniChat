@@ -8,6 +8,7 @@ import com.omnichat.tenant.domain.entity.Team;
 import com.omnichat.tenant.domain.entity.Tenant;
 import com.omnichat.tenant.dto.CreateTeamReq;
 import com.omnichat.tenant.dto.TeamRes;
+import com.omnichat.tenant.dto.UpdateTeamReq;
 import com.omnichat.tenant.exception.DuplicateResourceException;
 import com.omnichat.tenant.exception.QuotaExceededException;
 import com.omnichat.tenant.exception.ResourceNotFoundException;
@@ -72,6 +73,53 @@ public class TeamService {
                     .aggregateType("Team")
                     .aggregateId(savedTeam.getId())
                     .type("team.created")
+                    .payload(objectMapper.writeValueAsString(payload))
+                    .build();
+            outboxEventRepository.save(event);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize outbox event payload", e);
+            throw new RuntimeException("Failed to serialize outbox event payload", e);
+        }
+
+        return TeamRes.builder()
+                .teamId(savedTeam.getId())
+                .teamName(savedTeam.getName())
+                .description(savedTeam.getDescription())
+                .createdAt(savedTeam.getCreatedAt())
+                .build();
+    }
+
+    @Transactional
+    public TeamRes updateTeam(String tenantId, String teamId, UpdateTeamReq request) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Nhóm không tồn tại hoặc đã bị xóa"));
+
+        if (!team.getTenantId().equals(tenantId)) {
+            throw new ResourceNotFoundException("Nhóm không tồn tại hoặc đã bị xóa");
+        }
+
+        if (teamRepository.existsByTenantIdAndNameIgnoreCaseAndIdNot(tenantId, request.getTeamName(), teamId)) {
+            throw new DuplicateResourceException("Tên nhóm đã tồn tại, vui lòng chọn tên khác");
+        }
+
+        team.setName(request.getTeamName());
+        team.setDescription(request.getDescription());
+        // Set version for optimistic locking. Spring Data JPA handles the check during save/flush
+        team.setVersion(request.getVersion());
+
+        Team savedTeam = teamRepository.save(team);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("teamId", savedTeam.getId());
+        payload.put("tenantId", tenantId);
+        payload.put("updatedFields", Map.of("name", savedTeam.getName(), "description", savedTeam.getDescription()));
+        payload.put("updatedAt", savedTeam.getUpdatedAt());
+
+        try {
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateType("Team")
+                    .aggregateId(savedTeam.getId())
+                    .type("team.updated")
                     .payload(objectMapper.writeValueAsString(payload))
                     .build();
             outboxEventRepository.save(event);

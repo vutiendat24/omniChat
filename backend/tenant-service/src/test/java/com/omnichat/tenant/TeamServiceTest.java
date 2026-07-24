@@ -8,6 +8,7 @@ import com.omnichat.tenant.domain.entity.Team;
 import com.omnichat.tenant.domain.entity.Tenant;
 import com.omnichat.tenant.dto.CreateTeamReq;
 import com.omnichat.tenant.dto.TeamRes;
+import com.omnichat.tenant.dto.UpdateTeamReq;
 import com.omnichat.tenant.exception.DuplicateResourceException;
 import com.omnichat.tenant.exception.QuotaExceededException;
 import com.omnichat.tenant.exception.ResourceNotFoundException;
@@ -163,5 +164,96 @@ public class TeamServiceTest {
         TeamRes res = teamService.createTeam(tenantId, req);
         assertNotNull(res);
         verify(teamRepository, times(1)).save(any(Team.class));
+    }
+
+    @Test
+    void testUpdateTeam_Success() throws JsonProcessingException {
+        String teamId = UUID.randomUUID().toString();
+        Team existingTeam = Team.builder()
+                .id(teamId)
+                .tenantId(tenantId)
+                .name("Old Name")
+                .description("Old Desc")
+                .version(1L)
+                .build();
+
+        UpdateTeamReq req = UpdateTeamReq.builder()
+                .teamName("New Name")
+                .description("New Desc")
+                .version(1L)
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(existingTeam));
+        // Same tenant ID check
+        when(teamRepository.existsByTenantIdAndNameIgnoreCaseAndIdNot(tenantId, "New Name", teamId)).thenReturn(false);
+        
+        when(teamRepository.save(any(Team.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
+
+        TeamRes res = teamService.updateTeam(tenantId, teamId, req);
+
+        assertNotNull(res);
+        assertEquals("New Name", res.getTeamName());
+        assertEquals("New Desc", res.getDescription());
+        
+        verify(teamRepository, times(1)).save(any(Team.class));
+        verify(outboxEventRepository, times(1)).save(argThat(event -> 
+            event.getAggregateType().equals("Team") && event.getType().equals("team.updated")
+        ));
+    }
+
+    @Test
+    void testUpdateTeam_DuplicateName_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        Team existingTeam = Team.builder()
+                .id(teamId)
+                .tenantId(tenantId)
+                .name("Old Name")
+                .build();
+
+        UpdateTeamReq req = UpdateTeamReq.builder()
+                .teamName("Existing Name")
+                .version(1L)
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(existingTeam));
+        when(teamRepository.existsByTenantIdAndNameIgnoreCaseAndIdNot(tenantId, "Existing Name", teamId)).thenReturn(true);
+
+        assertThrows(DuplicateResourceException.class, () -> teamService.updateTeam(tenantId, teamId, req));
+        verify(teamRepository, never()).save(any(Team.class));
+    }
+
+    @Test
+    void testUpdateTeam_NotFound_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        UpdateTeamReq req = UpdateTeamReq.builder()
+                .teamName("New Name")
+                .version(1L)
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> teamService.updateTeam(tenantId, teamId, req));
+        verify(teamRepository, never()).save(any(Team.class));
+    }
+
+    @Test
+    void testUpdateTeam_WrongTenantId_ThrowsException() {
+        String teamId = UUID.randomUUID().toString();
+        Team existingTeam = Team.builder()
+                .id(teamId)
+                .tenantId("another-tenant-id")
+                .name("Old Name")
+                .build();
+
+        UpdateTeamReq req = UpdateTeamReq.builder()
+                .teamName("New Name")
+                .version(1L)
+                .build();
+
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(existingTeam));
+
+        assertThrows(ResourceNotFoundException.class, () -> teamService.updateTeam(tenantId, teamId, req));
+        verify(teamRepository, never()).save(any(Team.class));
     }
 }
