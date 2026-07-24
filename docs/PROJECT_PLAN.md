@@ -25,7 +25,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 - [x] MOD-TENANT-04: Tạo mới Team - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [x] MOD-TENANT-05: Cập nhật thông tin Team - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [x] MOD-TENANT-06: Xóa/Vô hiệu hóa Team - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
-- [ ] MOD-TENANT-07: Thêm/Mời thành viên vào Tenant - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
+- [x] MOD-TENANT-07: Thêm/Mời thành viên vào Tenant - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [ ] MOD-TENANT-08: Gán thành viên vào Team - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [ ] MOD-TENANT-09: Hủy tư cách thành viên (Remove Member) - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)
 - [ ] MOD-TENANT-10: Cấu hình giờ làm việc (Business Hours) - [REQUIREMENTS](M02-tenant-organization/REQUIREMENTS-tenant-organization.md)

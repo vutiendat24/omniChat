@@ -406,4 +406,26 @@ public class AuthServiceImpl implements AuthService {
             }
         }
     }
+
+    @Override
+    @Transactional
+    public void inviteUser(com.omnichat.auth.dto.InviteUserReq request) {
+        Optional<User> existingUserOpt = userRepository.findByEmail(request.getEmail());
+
+        if (existingUserOpt.isEmpty()) {
+            User user = User.builder()
+                    .email(request.getEmail())
+                    .fullName(request.getEmail().split("@")[0]) // Default name
+                    .password(null) // No password, must set via link
+                    .status(UserStatus.PENDING_VERIFICATION)
+                    .authProvider(AuthProvider.LOCAL)
+                    .build();
+
+            Role agentRole = roleRepository.findByName("ROLE_AGENT")
+                    .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_AGENT").description("Agent").build()));
+            
+            user.getRoles().add(agentRole);
+            userRepository.save(user);
+        }
+    }
 }

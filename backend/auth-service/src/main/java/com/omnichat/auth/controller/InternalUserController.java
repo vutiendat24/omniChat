@@ -1,6 +1,7 @@
 package com.omnichat.auth.controller;
 
 import com.omnichat.auth.dto.CreateOwnerReq;
+import com.omnichat.auth.dto.InviteUserReq;
 import com.omnichat.auth.dto.RevokeTokensReq;
 import com.omnichat.auth.service.AuthService;
 import jakarta.validation.Valid;
@@ -27,6 +28,12 @@ public class InternalUserController {
     @PostMapping("/revoke-by-emails")
     public ResponseEntity<Void> revokeTokensByEmails(@Valid @RequestBody RevokeTokensReq request) {
         authService.revokeTokensByEmails(request.getEmails());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/invite")
+    public ResponseEntity<Void> inviteUser(@Valid @RequestBody InviteUserReq request) {
+        authService.inviteUser(request);
         return ResponseEntity.ok().build();
     }
 }

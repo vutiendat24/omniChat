@@ -1,6 +1,8 @@
 package com.omnichat.tenant.client;
 
 import com.omnichat.tenant.dto.CreateOwnerReq;
+import com.omnichat.tenant.dto.CreateOwnerReq;
+import com.omnichat.tenant.dto.InviteUserReq;
 import com.omnichat.tenant.dto.RevokeTokensReq;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
@@ -16,4 +18,6 @@ public interface AuthServiceClient {
     @PostMapping("/api/v1/internal/users/revoke-by-emails")
     ResponseEntity<Void> revokeTokensByEmails(@RequestBody RevokeTokensReq request);
 
+    @PostMapping("/api/v1/internal/users/invite")
+    ResponseEntity<Void> inviteUser(@RequestBody InviteUserReq request);
 }
