@@ -14,6 +14,6 @@ public interface AuthService {
     TokenRes login(LoginReq request);
     TokenRes googleLogin(com.omnichat.auth.dto.GoogleSsoReq request);
     TokenRes refresh(String refreshToken);
-    void logout(String accessToken, String refreshToken);
+    void logout(String accessToken, String refreshToken, boolean allDevices);
     IntrospectRes introspect(IntrospectReq request);
 }

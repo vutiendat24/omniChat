@@ -292,14 +292,22 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void logout(String accessToken, String refreshToken) {
-        // Blacklist the current access token in Redis
-        if (accessToken != null && accessToken.startsWith("Bearer ")) {
-            tokenProvider.blacklistToken(accessToken.substring(7));
+    public void logout(String accessToken, String refreshToken, boolean allDevices) {
+        Long userId = null;
+
+        if (accessToken != null) {
+            tokenProvider.blacklistToken(accessToken);
+            userId = tokenProvider.getUserIdFromToken(accessToken);
+            
+            if (userId != null) {
+                com.omnichat.auth.dto.TokenBlacklistedEvent event = new com.omnichat.auth.dto.TokenBlacklistedEvent(userId, accessToken);
+                kafkaProducerService.sendTokenBlacklistedEvent(event);
+            }
         }
 
-        // Revoke the refresh token in DB
-        if (refreshToken != null) {
+        if (allDevices && userId != null) {
+            refreshTokenRepository.deleteByUser_Id(userId);
+        } else if (refreshToken != null) {
             refreshTokenRepository.findByToken(refreshToken).ifPresent(token -> {
                 token.setRevoked(true);
                 refreshTokenRepository.save(token);

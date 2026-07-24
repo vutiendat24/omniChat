@@ -506,4 +506,32 @@ class AuthServiceImplTest {
         LockedException exception = assertThrows(LockedException.class, () -> authService.refresh("valid-token"));
         assertEquals("Tài khoản của bạn đã bị khóa", exception.getMessage());
     }
+
+    @Test
+    void logout_SingleDevice_Success() {
+        RefreshToken token = new RefreshToken();
+        token.setToken("refresh-token");
+        token.setRevoked(false);
+
+        when(refreshTokenRepository.findByToken("refresh-token")).thenReturn(Optional.of(token));
+        when(tokenProvider.getUserIdFromToken("access-token")).thenReturn(1L);
+
+        authService.logout("access-token", "refresh-token", false);
+
+        verify(tokenProvider, times(1)).blacklistToken("access-token");
+        verify(refreshTokenRepository, times(1)).save(token);
+        assertTrue(token.isRevoked());
+        verify(kafkaProducerService, times(1)).sendTokenBlacklistedEvent(any());
+    }
+
+    @Test
+    void logout_AllDevices_Success() {
+        when(tokenProvider.getUserIdFromToken("access-token")).thenReturn(1L);
+
+        authService.logout("access-token", null, true);
+
+        verify(tokenProvider, times(1)).blacklistToken("access-token");
+        verify(refreshTokenRepository, times(1)).deleteByUser_Id(1L);
+        verify(kafkaProducerService, times(1)).sendTokenBlacklistedEvent(any());
+    }
 }

@@ -104,6 +104,19 @@ public class JwtTokenProvider {
         }
     }
 
+    public Long getUserIdFromToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(publicKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            return Long.parseLong(claims.getSubject());
+        } catch (JwtException | IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
     private PrivateKey loadPrivateKey(String keyStr) throws NoSuchAlgorithmException, InvalidKeySpecException {
         String privateKeyContent = keyStr
                 .replace("-----BEGIN PRIVATE KEY-----", "")

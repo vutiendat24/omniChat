@@ -40,9 +40,14 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestHeader(value = "Authorization", required = false) String accessToken,
-                                       @RequestParam(value = "refreshToken", required = false) String refreshToken) {
-        authService.logout(accessToken, refreshToken);
+    public ResponseEntity<Void> logout(@RequestHeader(value = "Authorization", required = false) String authHeader,
+                                       @RequestParam(value = "refreshToken", required = false) String refreshToken,
+                                       @RequestParam(value = "allDevices", defaultValue = "false") boolean allDevices) {
+        String accessToken = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            accessToken = authHeader.substring(7);
+        }
+        authService.logout(accessToken, refreshToken, allDevices);
         return ResponseEntity.ok().build();
     }
 
