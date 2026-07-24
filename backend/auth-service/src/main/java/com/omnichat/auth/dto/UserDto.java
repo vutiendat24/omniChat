@@ -7,6 +7,8 @@ import java.util.Set;
 public class UserDto {
     private Long id;
     private String email;
+    private String fullName;
+    private String status;
     private Set<String> roles;
     private String teamName;
 }

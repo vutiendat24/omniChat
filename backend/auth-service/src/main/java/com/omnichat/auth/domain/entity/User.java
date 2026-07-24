@@ -27,6 +27,14 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "team_id")
     private Team team;

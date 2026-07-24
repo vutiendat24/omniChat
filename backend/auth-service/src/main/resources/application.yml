@@ -31,6 +31,12 @@ spring:
       host: localhost
       port: 6379
 
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
 jwt:
   # The private key must be base64 encoded and wrapped in -----BEGIN PRIVATE KEY----- ...
   # Will be fetched from Config Server ideally

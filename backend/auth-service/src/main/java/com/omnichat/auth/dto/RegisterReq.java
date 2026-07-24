@@ -13,7 +13,17 @@ public class RegisterReq {
 
     @NotBlank(message = "Password cannot be blank")
     @Size(min = 8, message = "Password must be at least 8 characters")
+    @jakarta.validation.constraints.Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+        message = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+    )
     private String password;
+
+    @NotBlank(message = "Confirm Password cannot be blank")
+    private String confirmPassword;
+
+    @NotBlank(message = "Full Name cannot be blank")
+    private String fullName;
 
     private String role; // e.g. AGENT
 }

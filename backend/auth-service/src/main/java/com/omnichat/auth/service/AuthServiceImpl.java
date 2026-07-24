@@ -25,6 +25,11 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.omnichat.auth.domain.entity.UserStatus;
+import com.omnichat.auth.domain.entity.VerificationToken;
+import com.omnichat.auth.dto.UserRegisteredEvent;
+import com.omnichat.auth.repository.VerificationTokenRepository;
+
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -34,8 +39,10 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final VerificationTokenRepository verificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
+    private final KafkaProducerService kafkaProducerService;
 
     @Value("${jwt.refresh-expiration-ms}")
     private Long refreshTokenDurationMs;
@@ -45,14 +52,31 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public UserDto register(RegisterReq request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new UserAlreadyExistsException("Email is already in use!");
+    public MessageRes register(RegisterReq request) {
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match!");
+        }
+
+        Optional<User> existingUserOpt = userRepository.findByEmail(request.getEmail());
+        if (existingUserOpt.isPresent()) {
+            User existingUser = existingUserOpt.get();
+            if (existingUser.getStatus() == UserStatus.ACTIVE) {
+                throw new UserAlreadyExistsException("Email is already in use!");
+            } else if (existingUser.getStatus() == UserStatus.PENDING_VERIFICATION) {
+                // Resend verification email
+                verificationTokenRepository.deleteByUserId(existingUser.getId());
+                VerificationToken newToken = createVerificationToken(existingUser);
+                kafkaProducerService.sendUserRegisteredEvent(new UserRegisteredEvent(
+                        existingUser.getEmail(), existingUser.getFullName(), newToken.getToken()));
+                return new MessageRes("Vui lòng kiểm tra email để kích hoạt tài khoản.");
+            }
         }
 
         User user = User.builder()
                 .email(request.getEmail())
+                .fullName(request.getFullName())
                 .password(passwordEncoder.encode(request.getPassword()))
+                .status(UserStatus.PENDING_VERIFICATION)
                 .build();
 
         String roleName = request.getRole() != null ? request.getRole().toUpperCase() : "AGENT";
@@ -66,7 +90,41 @@ public class AuthServiceImpl implements AuthService {
         }
 
         User savedUser = userRepository.save(user);
-        return userMapper.toDto(savedUser);
+        VerificationToken verificationToken = createVerificationToken(savedUser);
+
+        kafkaProducerService.sendUserRegisteredEvent(new UserRegisteredEvent(
+                savedUser.getEmail(), savedUser.getFullName(), verificationToken.getToken()));
+
+        return new MessageRes("Vui lòng kiểm tra email để kích hoạt tài khoản.");
+    }
+
+    @Override
+    @Transactional
+    public MessageRes verifyEmail(String token) {
+        VerificationToken verificationToken = verificationTokenRepository.findByToken(token)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid verification token"));
+
+        if (verificationToken.getExpiryDate().compareTo(Instant.now()) < 0) {
+            verificationTokenRepository.delete(verificationToken);
+            throw new IllegalArgumentException("Verification token has expired");
+        }
+
+        User user = verificationToken.getUser();
+        user.setStatus(UserStatus.ACTIVE);
+        userRepository.save(user);
+
+        verificationTokenRepository.delete(verificationToken);
+
+        return new MessageRes("Xác thực thành công. Bạn có thể đăng nhập.");
+    }
+
+    private VerificationToken createVerificationToken(User user) {
+        VerificationToken token = VerificationToken.builder()
+                .token(UUID.randomUUID().toString())
+                .user(user)
+                .expiryDate(Instant.now().plusSeconds(86400)) // 24 hours
+                .build();
+        return verificationTokenRepository.save(token);
     }
 
     @Override

@@ -67,6 +67,12 @@
             <artifactId>flyway-mysql</artifactId>
         </dependency>
         
+        <!-- Kafka -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        
         <!-- JWT parsing and generation -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
