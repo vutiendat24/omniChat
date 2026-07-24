@@ -55,4 +55,13 @@ public class AuthController {
     public ResponseEntity<IntrospectRes> introspect(@Valid @RequestBody IntrospectReq request) {
         return ResponseEntity.ok(authService.introspect(request));
     }
+
+    @GetMapping("/me")
+    public ResponseEntity<com.omnichat.auth.dto.UserProfileRes> getCurrentProfile(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(401).build();
+        }
+        String accessToken = authHeader.substring(7);
+        return ResponseEntity.ok(authService.getCurrentProfile(accessToken));
+    }
 }

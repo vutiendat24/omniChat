@@ -325,6 +325,29 @@ public class AuthServiceImpl implements AuthService {
         return IntrospectRes.builder().valid(isValid).build();
     }
 
+    @Override
+    public com.omnichat.auth.dto.UserProfileRes getCurrentProfile(String accessToken) {
+        if (!tokenProvider.validateToken(accessToken)) {
+            throw new org.springframework.security.authentication.BadCredentialsException("Token không hợp lệ hoặc đã hết hạn");
+        }
+
+        Long userId = tokenProvider.getUserIdFromToken(accessToken);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("Không tìm thấy người dùng"));
+
+        if (user.getStatus() == UserStatus.SUSPENDED || user.getStatus() == UserStatus.LOCKED) {
+            throw new org.springframework.security.authentication.LockedException("Tài khoản của bạn đã bị khóa");
+        }
+
+        return com.omnichat.auth.dto.UserProfileRes.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .avatar(user.getAvatar())
+                .status(user.getStatus())
+                .build();
+    }
+
     private RefreshToken createRefreshToken(Long userId) {
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUser(userRepository.findById(userId).orElseThrow());

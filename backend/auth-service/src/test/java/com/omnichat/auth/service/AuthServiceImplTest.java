@@ -536,4 +536,57 @@ class AuthServiceImplTest {
         verify(refreshTokenRepository, times(1)).deleteByUser_Id(1L);
         verify(kafkaProducerService, times(1)).sendTokenBlacklistedEvent(any());
     }
+
+    @Test
+    void getCurrentProfile_Success() {
+        when(tokenProvider.validateToken("valid-access-token")).thenReturn(true);
+        when(tokenProvider.getUserIdFromToken("valid-access-token")).thenReturn(1L);
+        
+        User activeUser = new User();
+        activeUser.setId(1L);
+        activeUser.setEmail("test@gmail.com");
+        activeUser.setFullName("Test User");
+        activeUser.setAvatar("avatar.png");
+        activeUser.setStatus(UserStatus.ACTIVE);
+        
+        com.omnichat.auth.domain.entity.Role role = new com.omnichat.auth.domain.entity.Role(1L, "ADMIN", "Admin", false, new java.util.HashSet<>());
+        role.getPermissions().add(new com.omnichat.auth.domain.entity.Permission(1L, "VIEW_ALL", "View All"));
+        activeUser.getRoles().add(role);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(activeUser));
+
+        com.omnichat.auth.dto.UserProfileRes profile = authService.getCurrentProfile("valid-access-token");
+
+        assertEquals(1L, profile.getId());
+        assertEquals("test@gmail.com", profile.getEmail());
+        assertEquals("Test User", profile.getFullName());
+        assertEquals("avatar.png", profile.getAvatar());
+        assertEquals(UserStatus.ACTIVE, profile.getStatus());
+    }
+
+    @Test
+    void getCurrentProfile_InvalidToken_ThrowsException() {
+        when(tokenProvider.validateToken("invalid-token")).thenReturn(false);
+
+        org.springframework.security.authentication.BadCredentialsException exception = assertThrows(
+            org.springframework.security.authentication.BadCredentialsException.class, 
+            () -> authService.getCurrentProfile("invalid-token")
+        );
+        assertEquals("Token không hợp lệ hoặc đã hết hạn", exception.getMessage());
+    }
+
+    @Test
+    void getCurrentProfile_UserLocked_ThrowsException() {
+        when(tokenProvider.validateToken("valid-access-token")).thenReturn(true);
+        when(tokenProvider.getUserIdFromToken("valid-access-token")).thenReturn(1L);
+        
+        User lockedUser = new User();
+        lockedUser.setId(1L);
+        lockedUser.setStatus(UserStatus.LOCKED);
+        
+        when(userRepository.findById(1L)).thenReturn(Optional.of(lockedUser));
+
+        LockedException exception = assertThrows(LockedException.class, () -> authService.getCurrentProfile("valid-access-token"));
+        assertEquals("Tài khoản của bạn đã bị khóa", exception.getMessage());
+    }
 }

@@ -16,4 +16,5 @@ public interface AuthService {
     TokenRes refresh(String refreshToken);
     void logout(String accessToken, String refreshToken, boolean allDevices);
     IntrospectRes introspect(IntrospectReq request);
+    com.omnichat.auth.dto.UserProfileRes getCurrentProfile(String accessToken);
 }
