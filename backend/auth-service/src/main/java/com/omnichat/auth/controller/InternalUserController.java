@@ -1,6 +1,7 @@
 package com.omnichat.auth.controller;
 
 import com.omnichat.auth.dto.CreateOwnerReq;
+import com.omnichat.auth.dto.RevokeTokensReq;
 import com.omnichat.auth.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,12 @@ public class InternalUserController {
     @PostMapping("/owner")
     public ResponseEntity<Void> createOwnerAccount(@Valid @RequestBody CreateOwnerReq request) {
         authService.createOwnerAccount(request);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/revoke-by-emails")
+    public ResponseEntity<Void> revokeTokensByEmails(@Valid @RequestBody RevokeTokensReq request) {
+        authService.revokeTokensByEmails(request.getEmails());
         return ResponseEntity.ok().build();
     }
 }

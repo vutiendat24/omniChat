@@ -18,4 +18,5 @@ public interface AuthService {
     IntrospectRes introspect(IntrospectReq request);
     com.omnichat.auth.dto.UserProfileRes getCurrentProfile(String accessToken);
     void createOwnerAccount(com.omnichat.auth.dto.CreateOwnerReq request);
+    void revokeTokensByEmails(java.util.List<String> emails);
 }

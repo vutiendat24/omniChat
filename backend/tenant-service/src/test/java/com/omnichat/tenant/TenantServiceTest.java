@@ -5,7 +5,9 @@ import com.omnichat.tenant.client.AuthServiceClient;
 import com.omnichat.tenant.domain.entity.Tenant;
 import com.omnichat.tenant.dto.CreateTenantReq;
 import com.omnichat.tenant.dto.UpdateTenantReq;
+import com.omnichat.tenant.dto.UpdateTenantStatusReq;
 import com.omnichat.tenant.dto.TenantRes;
+import com.omnichat.tenant.domain.entity.TenantStatus;
 import com.omnichat.tenant.exception.DuplicateResourceException;
 import com.omnichat.tenant.repository.OutboxEventRepository;
 import com.omnichat.tenant.repository.TenantRepository;
@@ -20,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -164,6 +167,57 @@ public class TenantServiceTest {
             tenantService.updateTenant(tenantId, req);
         });
 
+        verify(tenantRepository, never()).save(any(Tenant.class));
+    }
+
+    @Test
+    void testUpdateTenantStatus_Success_ToInactive() {
+        String tenantId = UUID.randomUUID().toString();
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .name("Test")
+                .ownerEmail("owner@test.com")
+                .status(TenantStatus.ACTIVE)
+                .build();
+
+        UpdateTenantStatusReq req = UpdateTenantStatusReq.builder()
+                .status(TenantStatus.INACTIVE)
+                .reason("Expired")
+                .build();
+
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(existingTenant));
+        when(tenantRepository.save(any(Tenant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TenantRes res = tenantService.updateTenantStatus(tenantId, req);
+
+        assertNotNull(res);
+        assertEquals(TenantStatus.INACTIVE, res.getStatus());
+        
+        verify(authServiceClient, times(1)).revokeTokensByEmails(argThat(r -> r.getEmails().contains("owner@test.com")));
+        verify(outboxEventRepository, times(1)).save(argThat(event -> 
+            event.getAggregateType().equals("Tenant") && event.getType().equals("tenant.status_changed")
+        ));
+    }
+
+    @Test
+    void testUpdateTenantStatus_SameStatus_ThrowsException() {
+        String tenantId = UUID.randomUUID().toString();
+        Tenant existingTenant = Tenant.builder()
+                .id(tenantId)
+                .status(TenantStatus.ACTIVE)
+                .build();
+
+        UpdateTenantStatusReq req = UpdateTenantStatusReq.builder()
+                .status(TenantStatus.ACTIVE)
+                .build();
+
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(existingTenant));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> {
+            tenantService.updateTenantStatus(tenantId, req);
+        });
+
+        assertTrue(ex.getMessage().contains("Cannot change to the same status"));
         verify(tenantRepository, never()).save(any(Tenant.class));
     }
 }

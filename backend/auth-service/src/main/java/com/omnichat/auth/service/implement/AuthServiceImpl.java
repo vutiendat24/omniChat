@@ -386,4 +386,24 @@ public class AuthServiceImpl implements AuthService {
         // Note: Currently auth-service doesn't store tenantId mapping per user in DB. 
         // We just assign the ROLE_TENANT_OWNER for now as per simple setup.
     }
+
+    @Override
+    @Transactional
+    public void revokeTokensByEmails(java.util.List<String> emails) {
+        if (emails == null || emails.isEmpty()) return;
+        
+        for (String email : emails) {
+            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (userOpt.isPresent()) {
+                Long userId = userOpt.get().getId();
+                // We invalidate refresh tokens. 
+                refreshTokenRepository.deleteByUser_Id(userId);
+                // Note: In a fully fleshed out system, we would also blacklist all active access tokens
+                // by pushing an event to Redis or Kafka. Since we don't track all active access tokens 
+                // individually in DB, we rely on the short TTL of access tokens or event publishing.
+                com.omnichat.auth.dto.TokenBlacklistedEvent event = new com.omnichat.auth.dto.TokenBlacklistedEvent(userId, "ALL_TOKENS_REVOKED");
+                kafkaProducerService.sendTokenBlacklistedEvent(event);
+            }
+        }
+    }
 }

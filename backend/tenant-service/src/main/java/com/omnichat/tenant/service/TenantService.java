@@ -8,7 +8,10 @@ import com.omnichat.tenant.domain.entity.Tenant;
 import com.omnichat.tenant.dto.CreateOwnerReq;
 import com.omnichat.tenant.dto.CreateTenantReq;
 import com.omnichat.tenant.dto.UpdateTenantReq;
+import com.omnichat.tenant.dto.UpdateTenantStatusReq;
+import com.omnichat.tenant.dto.RevokeTokensReq;
 import com.omnichat.tenant.dto.TenantRes;
+import com.omnichat.tenant.domain.entity.TenantStatus;
 import com.omnichat.tenant.exception.DuplicateResourceException;
 import com.omnichat.tenant.exception.ResourceNotFoundException;
 import com.omnichat.tenant.repository.OutboxEventRepository;
@@ -21,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -132,6 +136,68 @@ public class TenantService {
                     .aggregateType("Tenant")
                     .aggregateId(savedTenant.getId())
                     .type("tenant.updated")
+                    .payload(objectMapper.writeValueAsString(payload))
+                    .build();
+            outboxEventRepository.save(event);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize outbox event payload", e);
+            throw new RuntimeException("Failed to serialize outbox event payload", e);
+        }
+
+        return TenantRes.builder()
+                .tenantId(savedTenant.getId())
+                .tenantName(savedTenant.getName())
+                .slug(savedTenant.getSlug())
+                .logoUrl(savedTenant.getLogoUrl())
+                .industry(savedTenant.getIndustry())
+                .contactEmail(savedTenant.getContactEmail())
+                .contactPhone(savedTenant.getContactPhone())
+                .address(savedTenant.getAddress())
+                .status(savedTenant.getStatus())
+                .createdAt(savedTenant.getCreatedAt())
+                .updatedAt(savedTenant.getUpdatedAt())
+                .build();
+    }
+
+    @Transactional
+    public TenantRes updateTenantStatus(String tenantId, UpdateTenantStatusReq request) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
+
+        if (tenant.getStatus() == request.getStatus()) {
+            throw new IllegalArgumentException("Cannot change to the same status");
+        }
+
+        TenantStatus oldStatus = tenant.getStatus();
+        tenant.setStatus(request.getStatus());
+        if (request.getReason() != null) {
+            tenant.setStatusReason(request.getReason());
+        }
+
+        Tenant savedTenant = tenantRepository.save(tenant);
+
+        if (request.getStatus() == TenantStatus.INACTIVE || request.getStatus() == TenantStatus.SUSPENDED) {
+            try {
+                authServiceClient.revokeTokensByEmails(RevokeTokensReq.builder()
+                        .emails(List.of(tenant.getOwnerEmail()))
+                        .build());
+            } catch (Exception e) {
+                log.error("Failed to call auth-service to revoke tokens, will rely on eventual consistency via events", e);
+            }
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("tenantId", savedTenant.getId());
+        payload.put("oldStatus", oldStatus.name());
+        payload.put("newStatus", savedTenant.getStatus().name());
+        payload.put("reason", savedTenant.getStatusReason());
+        payload.put("updatedAt", savedTenant.getUpdatedAt());
+
+        try {
+            OutboxEvent event = OutboxEvent.builder()
+                    .aggregateType("Tenant")
+                    .aggregateId(savedTenant.getId())
+                    .type("tenant.status_changed")
                     .payload(objectMapper.writeValueAsString(payload))
                     .build();
             outboxEventRepository.save(event);
