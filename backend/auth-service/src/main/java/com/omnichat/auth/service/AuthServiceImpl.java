@@ -130,19 +130,63 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public TokenRes login(LoginReq request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        if (request.getEmail() != null) {
+            request.setEmail(request.getEmail().trim());
+        }
+        Optional<User> userOpt = userRepository.findByEmail(request.getEmail());
+        if (userOpt.isEmpty()) {
+            throw new org.springframework.security.authentication.BadCredentialsException("Tài khoản hoặc mật khẩu không chính xác");
+        }
+        User user = userOpt.get();
 
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-        String accessToken = tokenProvider.generateToken(userDetails);
-        RefreshToken refreshToken = createRefreshToken(userDetails.getUser().getId());
+        if (user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+            throw new org.springframework.security.authentication.DisabledException("Vui lòng xác thực email trước khi đăng nhập");
+        }
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            throw new org.springframework.security.authentication.LockedException("Tài khoản của bạn đã bị khóa");
+        }
+        if (user.getStatus() == UserStatus.LOCKED) {
+            if (user.getLockoutEnd() != null && user.getLockoutEnd().compareTo(Instant.now()) > 0) {
+                throw new org.springframework.security.authentication.LockedException("Tài khoản đang bị tạm khóa, vui lòng thử lại sau");
+            } else {
+                user.setStatus(UserStatus.ACTIVE);
+                user.setFailedLoginAttempts(0);
+                user.setLockoutEnd(null);
+                userRepository.save(user);
+            }
+        }
 
-        return TokenRes.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken.getToken())
-                .expiresIn(accessTokenDurationMs)
-                .build();
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            );
+
+            if (user.getFailedLoginAttempts() > 0) {
+                user.setFailedLoginAttempts(0);
+                userRepository.save(user);
+            }
+
+            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+            String accessToken = tokenProvider.generateToken(userDetails);
+            RefreshToken refreshToken = createRefreshToken(userDetails.getUser().getId());
+
+            return TokenRes.builder()
+                    .accessToken(accessToken)
+                    .refreshToken(refreshToken.getToken())
+                    .expiresIn(accessTokenDurationMs)
+                    .build();
+        } catch (org.springframework.security.core.AuthenticationException e) {
+            int attempts = user.getFailedLoginAttempts() + 1;
+            user.setFailedLoginAttempts(attempts);
+            if (attempts >= 5) {
+                user.setStatus(UserStatus.LOCKED);
+                user.setLockoutEnd(Instant.now().plusSeconds(1800)); // 30 mins
+                userRepository.save(user);
+                throw new org.springframework.security.authentication.LockedException("Tài khoản đã bị tạm khóa do nhập sai nhiều lần");
+            }
+            userRepository.save(user);
+            throw new org.springframework.security.authentication.BadCredentialsException("Tài khoản hoặc mật khẩu không chính xác");
+        }
     }
 
     @Override

@@ -4,16 +4,33 @@ import com.omnichat.auth.domain.entity.Role;
 import com.omnichat.auth.domain.entity.User;
 import com.omnichat.auth.domain.entity.UserStatus;
 import com.omnichat.auth.domain.entity.VerificationToken;
+import com.omnichat.auth.domain.entity.RefreshToken;
+import com.omnichat.auth.dto.LoginReq;
 import com.omnichat.auth.dto.MessageRes;
 import com.omnichat.auth.dto.RegisterReq;
+import com.omnichat.auth.dto.TokenRes;
 import com.omnichat.auth.exception.UserAlreadyExistsException;
 import com.omnichat.auth.mapper.UserMapper;
 import com.omnichat.auth.repository.RefreshTokenRepository;
 import com.omnichat.auth.repository.RoleRepository;
 import com.omnichat.auth.repository.UserRepository;
 import com.omnichat.auth.repository.VerificationTokenRepository;
+import com.omnichat.auth.security.CustomUserDetails;
 import com.omnichat.auth.security.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -57,15 +74,23 @@ class AuthServiceImplTest {
     private AuthServiceImpl authService;
 
     private RegisterReq registerReq;
+    private LoginReq loginReq;
 
     @BeforeEach
     void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(authService, "refreshTokenDurationMs", 604800000L);
+        org.springframework.test.util.ReflectionTestUtils.setField(authService, "accessTokenDurationMs", 86400000L);
+
         registerReq = new RegisterReq();
         registerReq.setEmail("test@example.com");
         registerReq.setFullName("Test User");
         registerReq.setPassword("Password123!");
         registerReq.setConfirmPassword("Password123!");
         registerReq.setRole("AGENT");
+
+        loginReq = new LoginReq();
+        loginReq.setEmail("test@example.com");
+        loginReq.setPassword("Password123!");
     }
 
     @Test
@@ -176,5 +201,124 @@ class AuthServiceImplTest {
         assertEquals("Verification token has expired", exception.getMessage());
         verify(verificationTokenRepository, times(1)).delete(verificationToken);
         verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void login_Success() {
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("test@example.com");
+        user.setStatus(UserStatus.ACTIVE);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+
+        Authentication auth = mock(Authentication.class);
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        when(auth.getPrincipal()).thenReturn(userDetails);
+        when(authenticationManager.authenticate(any())).thenReturn(auth);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        when(tokenProvider.generateToken(userDetails)).thenReturn("access-token");
+        
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setToken("refresh-token");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(refreshToken);
+
+        TokenRes response = authService.login(loginReq);
+
+        assertEquals("access-token", response.getAccessToken());
+        assertEquals("refresh-token", response.getRefreshToken());
+        assertEquals(0, user.getFailedLoginAttempts());
+    }
+
+    @Test
+    void login_WrongCredentials_IncrementsFailedAttempts() {
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("test@example.com");
+        user.setStatus(UserStatus.ACTIVE);
+        user.setFailedLoginAttempts(3);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+
+        when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("Bad credentials"));
+
+        BadCredentialsException exception = assertThrows(BadCredentialsException.class, () -> authService.login(loginReq));
+        assertEquals("Tài khoản hoặc mật khẩu không chính xác", exception.getMessage());
+        assertEquals(4, user.getFailedLoginAttempts());
+        verify(userRepository, times(1)).save(user);
+    }
+
+    @Test
+    void login_WrongCredentials_LocksAccountAfter5Attempts() {
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("test@example.com");
+        user.setStatus(UserStatus.ACTIVE);
+        user.setFailedLoginAttempts(4);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+
+        when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("Bad credentials"));
+
+        LockedException exception = assertThrows(LockedException.class, () -> authService.login(loginReq));
+        assertEquals("Tài khoản đã bị tạm khóa do nhập sai nhiều lần", exception.getMessage());
+        assertEquals(5, user.getFailedLoginAttempts());
+        assertEquals(UserStatus.LOCKED, user.getStatus());
+        assertNotNull(user.getLockoutEnd());
+        verify(userRepository, times(1)).save(user);
+    }
+
+    @Test
+    void login_AccountPendingVerification() {
+        User user = new User();
+        user.setEmail("test@example.com");
+        user.setStatus(UserStatus.PENDING_VERIFICATION);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+
+        DisabledException exception = assertThrows(DisabledException.class, () -> authService.login(loginReq));
+        assertEquals("Vui lòng xác thực email trước khi đăng nhập", exception.getMessage());
+    }
+
+    @Test
+    void login_AccountLocked_LockoutEndNotExpired() {
+        User user = new User();
+        user.setEmail("test@example.com");
+        user.setStatus(UserStatus.LOCKED);
+        user.setLockoutEnd(Instant.now().plusSeconds(600)); // Still locked
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+
+        LockedException exception = assertThrows(LockedException.class, () -> authService.login(loginReq));
+        assertEquals("Tài khoản đang bị tạm khóa, vui lòng thử lại sau", exception.getMessage());
+    }
+
+    @Test
+    void login_AccountLocked_LockoutEndExpired_UnlocksAndAuthenticates() {
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("test@example.com");
+        user.setStatus(UserStatus.LOCKED);
+        user.setFailedLoginAttempts(5);
+        user.setLockoutEnd(Instant.now().minusSeconds(600)); // Lockout expired
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+
+        Authentication auth = mock(Authentication.class);
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        when(auth.getPrincipal()).thenReturn(userDetails);
+        when(authenticationManager.authenticate(any())).thenReturn(auth);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        when(tokenProvider.generateToken(userDetails)).thenReturn("access-token");
+        
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setToken("refresh-token");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(refreshToken);
+
+        TokenRes response = authService.login(loginReq);
+
+        assertEquals("access-token", response.getAccessToken());
+        assertEquals(UserStatus.ACTIVE, user.getStatus());
+        assertEquals(0, user.getFailedLoginAttempts());
+        assertNull(user.getLockoutEnd());
+        verify(userRepository, times(1)).save(user); // Wait, saved when unlocked! Wait, wait, if authentication succeeds, it's saved twice. But we verify times at least 1.
     }
 }

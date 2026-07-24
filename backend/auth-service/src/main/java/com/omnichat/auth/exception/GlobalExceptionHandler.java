@@ -36,7 +36,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<Map<String, Object>> handleBadCredentialsException(BadCredentialsException ex) {
-        return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid username or password");
+        return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage() != null && !ex.getMessage().isEmpty() && !ex.getMessage().equals("Bad credentials") ? ex.getMessage() : "Tài khoản hoặc mật khẩu không chính xác");
+    }
+
+    @ExceptionHandler(org.springframework.security.authentication.LockedException.class)
+    public ResponseEntity<Map<String, Object>> handleLockedException(org.springframework.security.authentication.LockedException ex) {
+        return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(org.springframework.security.authentication.DisabledException.class)
+    public ResponseEntity<Map<String, Object>> handleDisabledException(org.springframework.security.authentication.DisabledException ex) {
+        return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler(UsernameNotFoundException.class)

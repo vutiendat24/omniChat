@@ -198,7 +198,7 @@ graph TD
 
 | Service | DB | Schema chính | Yêu cầu kỹ thuật đặc biệt |
 |---|---|---|---|
-| `auth-service` | PostgreSQL | `users` (PENDING_VERIFICATION/ACTIVE), `roles`, `permissions`, `credentials`, `token_blacklist`, `verification_tokens` (Redis TTL 24h) | Email Global Unique; bcrypt/Argon2 hash; Timing Attack resistant |
+| `auth-service` | PostgreSQL | `users` (PENDING_VERIFICATION/ACTIVE/LOCKED/SUSPENDED, failed_login_attempts, lockout_end), `roles`, `permissions`, `credentials`, `token_blacklist`, `verification_tokens` (Redis TTL 24h) | Email Global Unique; bcrypt/Argon2 hash; Timing Attack resistant |
 | `tenant-service` | PostgreSQL | `tenants` (slug unique), `teams`, `tenant_members`, `sla_configs`, `business_hours`, `outbox` | Optimistic Locking (version field); Audit log mọi thay đổi |
 | `integration-service` | PostgreSQL | `channels` (ACTIVE/INACTIVE), `oauth_tokens` (AES-256 encrypted), `webhook_logs`, `outbound_queue`, `oauth_states` (Redis TTL 15min) | Token mã hóa AES-256 at rest; Channel unique toàn hệ thống |
 | `livestream-service` | PostgreSQL | `livestream_sessions` (LIVE/ENDED), `platform_connections`, `live_tokens` | Session lifecycle management |
