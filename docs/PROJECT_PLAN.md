@@ -38,7 +38,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 - [x] MOD-CI-03: Tự động làm mới Token (Auto-refresh Token) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 - [x] MOD-CI-04: Tiếp nhận Webhook Inbound - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 - [x] MOD-CI-05: Xác thực Webhook (Verify Webhook Signature) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
-- [ ] MOD-CI-06: Chuẩn hóa dữ liệu Inbound (Inbound Normalization) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
+- [x] MOD-CI-06: Chuẩn hóa dữ liệu Inbound (Inbound Normalization) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 - [ ] MOD-CI-07: Gửi tin nhắn Outbound (Outbound Delivery) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 
 ## 5. M04 — Livestream Connector
