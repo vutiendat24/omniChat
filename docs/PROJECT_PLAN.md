@@ -34,7 +34,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 ## 4. M03 — Channel Integration
 *(Phụ thuộc: M01, M02)*
 - [x] MOD-CI-01: Kết nối kênh (OAuth2 Connect) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
-- [ ] MOD-CI-02: Ngắt kết nối kênh (Disconnect Channel) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
+- [x] MOD-CI-02: Ngắt kết nối kênh (Disconnect Channel) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 - [ ] MOD-CI-03: Tự động làm mới Token (Auto-refresh Token) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 - [ ] MOD-CI-04: Tiếp nhận Webhook Inbound - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
 - [ ] MOD-CI-05: Xác thực Webhook (Verify Webhook Signature) - [REQUIREMENTS](M03-channel-integration/REQUIREMENTS-channel-integration.md)
