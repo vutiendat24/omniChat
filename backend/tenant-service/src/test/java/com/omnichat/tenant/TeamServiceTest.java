@@ -8,8 +8,6 @@ import com.omnichat.tenant.domain.entity.Team;
 import com.omnichat.tenant.domain.entity.Tenant;
 import com.omnichat.tenant.domain.entity.TenantMember;
 import com.omnichat.tenant.domain.entity.TenantMemberStatus;
-import com.omnichat.tenant.domain.entity.UserTeam;
-import com.omnichat.tenant.domain.entity.UserTeamId;
 import com.omnichat.tenant.dto.AssignMemberReq;
 import com.omnichat.tenant.dto.AssignMemberRes;
 import com.omnichat.tenant.dto.CreateTeamReq;

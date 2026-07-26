@@ -8,7 +8,6 @@ import com.omnichat.tenant.dto.InviteMemberReq;
 import com.omnichat.tenant.dto.TenantMemberRes;
 import com.omnichat.tenant.exception.DuplicateResourceException;
 import com.omnichat.tenant.exception.QuotaExceededException;
-import com.omnichat.tenant.exception.ResourceNotFoundException;
 import com.omnichat.tenant.repository.OutboxEventRepository;
 import com.omnichat.tenant.repository.PlanRepository;
 import com.omnichat.tenant.repository.TenantMemberRepository;
@@ -28,7 +27,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)

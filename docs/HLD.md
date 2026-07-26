@@ -200,7 +200,7 @@ graph TD
 |---|---|---|---|
 | `auth-service` | PostgreSQL | `users` (PENDING_VERIFICATION/ACTIVE/LOCKED/SUSPENDED, failed_login_attempts, lockout_end, auth_provider, password nullable), `roles` (is_system, description), `permissions`, `credentials`, `token_blacklist`, `verification_tokens` (Redis TTL 24h), `refresh_tokens` (revoked, expiry_date) | Email Global Unique; bcrypt/Argon2 hash; Timing Attack resistant |
 | `tenant-service` | MySQL | `tenants` (slug unique), `teams`, `tenant_members`, `sla_configs`, `business_hours`, `outbox` | Optimistic Locking (version field); Audit log mọi thay đổi |
-| `integration-service` | PostgreSQL | `channels` (ACTIVE/INACTIVE), `oauth_tokens` (AES-256 encrypted), `webhook_logs`, `outbound_queue`, `oauth_states` (Redis TTL 15min) | Token mã hóa AES-256 at rest; Channel unique toàn hệ thống |
+| `integration-service` | PostgreSQL | `channel_connections` (tenant_id, channel_id, avatar_url, ACTIVE/INACTIVE), `oauth_tokens` (AES-256 encrypted), `webhook_logs`, `outbound_queue`, `oauth_states` (Redis TTL 15min) | Token mã hóa AES-256 at rest; Channel unique toàn hệ thống |
 | `livestream-service` | PostgreSQL | `livestream_sessions` (LIVE/ENDED), `platform_connections`, `live_tokens` | Session lifecycle management |
 | `customer-service` | PostgreSQL | `customers`, `channel_identities` (1 customer ↔ nhiều platform_id), `merge_history` | Multi-channel identity mapping |
 | `conversation-service` | MongoDB | `conversations` (OPEN/CLOSED/PENDING/SPAM, sla_due_at), `messages` (INBOUND/OUTBOUND, SENDING/DELIVERED), `quick_reply_templates`, `tags` | Idempotency key (message_id); Distributed Lock Redis; Batch insert cho livestream |

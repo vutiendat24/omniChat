@@ -6,7 +6,6 @@ import com.omnichat.auth.dto.LoginReq;
 import com.omnichat.auth.dto.MessageRes;
 import com.omnichat.auth.dto.RegisterReq;
 import com.omnichat.auth.dto.TokenRes;
-import com.omnichat.auth.dto.UserDto;
 
 public interface AuthService {
     MessageRes register(RegisterReq request);

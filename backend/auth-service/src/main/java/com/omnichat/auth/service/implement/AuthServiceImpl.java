@@ -47,7 +47,6 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final VerificationTokenRepository verificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
-    private final UserMapper userMapper;
     private final KafkaProducerService kafkaProducerService;
     private final GoogleOAuthService googleOAuthService;
 

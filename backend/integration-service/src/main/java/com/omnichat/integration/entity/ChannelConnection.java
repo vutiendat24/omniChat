@@ -24,8 +24,17 @@ public class ChannelConnection {
     @Column(nullable = false)
     private Platform platform;
 
+    @Column(name = "tenant_id", nullable = false)
+    private String tenantId;
+
+    @Column(name = "channel_id", nullable = false)
+    private String channelId;
+
     @Column(name = "page_name", nullable = false)
     private String pageName;
+
+    @Column(name = "avatar_url", columnDefinition = "TEXT")
+    private String avatarUrl;
 
     @Column(name = "access_token", nullable = false, columnDefinition = "TEXT")
     private String accessToken;

@@ -10,4 +10,8 @@ import java.util.Optional;
 public interface ChannelConnectionRepository extends JpaRepository<ChannelConnection, Long> {
 
     Optional<ChannelConnection> findByIdAndStatus(Long id, ChannelConnection.ConnectionStatus status);
+
+    Optional<ChannelConnection> findByChannelIdAndPlatform(String channelId, ChannelConnection.Platform platform);
+    
+    Optional<ChannelConnection> findByChannelIdAndTenantId(String channelId, String tenantId);
 }
