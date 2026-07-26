@@ -14,4 +14,6 @@ public interface ChannelConnectionRepository extends JpaRepository<ChannelConnec
     Optional<ChannelConnection> findByChannelIdAndPlatform(String channelId, ChannelConnection.Platform platform);
     
     Optional<ChannelConnection> findByChannelIdAndTenantId(String channelId, String tenantId);
+
+    java.util.List<ChannelConnection> findByStatusAndExpiryDateBefore(ChannelConnection.ConnectionStatus status, java.time.LocalDateTime threshold);
 }
