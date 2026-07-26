@@ -8,6 +8,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -52,9 +53,13 @@ public class WebhookControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Test
     void givenValidPayload_whenPostWebhook_thenReturn200() throws Exception {
         String payload = "{\"object\":\"page\",\"entry\":[{\"id\":\"123\",\"time\":1234567890,\"messaging\":[]}]}";
+        String signature = "sha256=1234567890";
         
         when(kafkaTemplate.send(eq("webhook_events_raw"), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(null));
@@ -62,10 +67,10 @@ public class WebhookControllerTest {
         mockMvc.perform(post("/webhook/facebook")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload)
-                        .header("X-Hub-Signature-256", "sha256=1234567890"))
+                        .header("X-Hub-Signature-256", signature))
                 .andExpect(status().isOk());
 
-        verify(kafkaTemplate, times(1)).send(eq("webhook_events_raw"), eq(payload));
+        verify(kafkaTemplate, times(1)).send(eq("webhook_events_raw"), argThat(argument -> argument.contains("FACEBOOK") && argument.contains(signature)));
     }
 
     @Test

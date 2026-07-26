@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omnichat.integration.dto.RawWebhookEvent;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,9 +20,11 @@ public class WebhookController {
     private String verifyToken;
 
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
-    public WebhookController(KafkaTemplate<String, String> kafkaTemplate) {
+    public WebhookController(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
         this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/facebook")
@@ -41,10 +45,17 @@ public class WebhookController {
     }
 
     @PostMapping("/facebook")
-    public ResponseEntity<String> receiveFacebookWebhook(@RequestBody String payload) {
+    public ResponseEntity<String> receiveFacebookWebhook(
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature,
+            @RequestBody String payload) {
         log.debug("Received Facebook Webhook event");
         try {
-            kafkaTemplate.send("webhook_events_raw", payload);
+            RawWebhookEvent event = RawWebhookEvent.builder()
+                    .platform("FACEBOOK")
+                    .signature(signature)
+                    .payload(payload)
+                    .build();
+            kafkaTemplate.send("webhook_events_raw", objectMapper.writeValueAsString(event));
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             log.error("Failed to push webhook payload to Kafka", e);
@@ -54,10 +65,17 @@ public class WebhookController {
     
     // Similarly for Zalo
     @PostMapping("/zalo")
-    public ResponseEntity<String> receiveZaloWebhook(@RequestBody String payload) {
+    public ResponseEntity<String> receiveZaloWebhook(
+            @RequestHeader(value = "X-ZEvent-Signature", required = false) String signature,
+            @RequestBody String payload) {
         log.debug("Received Zalo Webhook event");
         try {
-            kafkaTemplate.send("webhook_events_raw", payload);
+            RawWebhookEvent event = RawWebhookEvent.builder()
+                    .platform("ZALO")
+                    .signature(signature)
+                    .payload(payload)
+                    .build();
+            kafkaTemplate.send("webhook_events_raw", objectMapper.writeValueAsString(event));
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             log.error("Failed to push webhook payload to Kafka", e);
