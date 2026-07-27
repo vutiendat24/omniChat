@@ -41,6 +41,12 @@ public class Conversation {
     @Builder.Default
     private Boolean isSlABreached = false;
 
+    @Version
+    private Long version;
+
+    @Column(name = "closed_at")
+    private LocalDateTime closedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

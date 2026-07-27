@@ -6,6 +6,9 @@ import com.omnichat.conversation.entity.Conversation;
 import com.omnichat.conversation.entity.Message;
 import com.omnichat.conversation.producer.ConversationEventProducer;
 import com.omnichat.conversation.repository.ConversationRepository;
+import com.omnichat.conversation.entity.Conversation;
+import com.omnichat.conversation.entity.Message;
+import com.omnichat.conversation.repository.ConversationHistoryRepository;
 import com.omnichat.conversation.repository.MessageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,8 @@ class ConversationServiceTest {
     private MessageRepository messageRepository;
     @Mock
     private ConversationEventProducer conversationEventProducer;
+    @Mock
+    private ConversationHistoryRepository conversationHistoryRepository;
     @Mock
     private RedisTemplate<String, String> redisTemplate;
     @Mock
@@ -127,6 +132,55 @@ class ConversationServiceTest {
         // Assert
         verify(conversationRepository).save(existingConv);
         verify(conversationEventProducer, never()).publishConversationCreated(anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void updateConversationStatus_WhenAgentChangesToResolved_ShouldUpdateStatusAndPushEvent() {
+        // Arrange
+        String convId = UUID.randomUUID().toString();
+        Conversation conv = new Conversation();
+        conv.setId(convId);
+        conv.setStatus(Conversation.ConversationStatus.OPEN);
+        conv.setAssignedAgentId(1L);
+
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(conv));
+        when(conversationRepository.save(any(Conversation.class))).thenReturn(conv);
+
+        com.omnichat.conversation.dto.UpdateStatusRequest req = new com.omnichat.conversation.dto.UpdateStatusRequest();
+        req.setStatus(Conversation.ConversationStatus.RESOLVED);
+        req.setReason("Done");
+
+        // Act
+        com.omnichat.conversation.dto.ConversationDto result = conversationService.updateConversationStatus(convId, req, "1", "AGENT");
+
+        // Then
+        assertEquals("RESOLVED", result.getStatus());
+        assertNotNull(conv.getClosedAt());
+        verify(conversationRepository).save(conv);
+        verify(conversationHistoryRepository).save(any(com.omnichat.conversation.entity.ConversationHistory.class));
+        verify(conversationEventProducer).publishConversationStatusUpdated(convId, "OPEN", "RESOLVED", "1");
+    }
+
+    @Test
+    void updateConversationStatus_WhenAgentIsNotAssigned_ShouldThrowAccessDenied() {
+        // Arrange
+        String convId = UUID.randomUUID().toString();
+        Conversation conv = new Conversation();
+        conv.setId(convId);
+        conv.setStatus(Conversation.ConversationStatus.OPEN);
+        conv.setAssignedAgentId(2L); // Different agent
+
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(conv));
+
+        com.omnichat.conversation.dto.UpdateStatusRequest req = new com.omnichat.conversation.dto.UpdateStatusRequest();
+        req.setStatus(Conversation.ConversationStatus.RESOLVED);
+
+        // Act & Then
+        org.springframework.web.server.ResponseStatusException ex = assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> {
+            conversationService.updateConversationStatus(convId, req, "1", "AGENT");
+        });
+        assertTrue(ex.getMessage().contains("Agent is not assigned to this conversation"));
+        verify(conversationRepository, never()).save(any());
     }
 
     @Test

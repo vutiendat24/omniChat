@@ -6,10 +6,13 @@ import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
 import com.omnichat.conversation.dto.SendMessageRequest;
 import com.omnichat.conversation.dto.TransferRequest;
+import com.omnichat.conversation.dto.UpdateStatusRequest;
 import com.omnichat.conversation.entity.Conversation;
+import com.omnichat.conversation.entity.ConversationHistory;
 import com.omnichat.conversation.entity.Message;
 import com.omnichat.conversation.producer.ConversationEventProducer;
 import com.omnichat.conversation.repository.ConversationRepository;
+import com.omnichat.conversation.repository.ConversationHistoryRepository;
 import com.omnichat.conversation.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +35,7 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final ConversationHistoryRepository conversationHistoryRepository;
     private final ConversationEventProducer conversationEventProducer;
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -455,6 +459,61 @@ public class ConversationService {
                 oldAgentId != null ? oldAgentId : 0L,
                 newAgentId,
                 request.getReason());
+
+        return ConversationDto.fromEntity(conversation);
+    }
+
+    /**
+     * MOD-CONV-02: Cập nhật trạng thái hội thoại.
+     */
+    @Transactional
+    public ConversationDto updateConversationStatus(String conversationId, UpdateStatusRequest request, String agentId, String role) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Conversation not found: " + conversationId));
+
+        // 2. Kiểm tra quyền
+        boolean isAdmin = "ADMIN".equalsIgnoreCase(role) || "SUPERVISOR".equalsIgnoreCase(role);
+        if (!isAdmin) {
+            // Agent chỉ được đổi trạng thái hội thoại mà họ được phân công
+            if (conversation.getAssignedAgentId() == null || !conversation.getAssignedAgentId().toString().equals(agentId)) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "Agent is not assigned to this conversation");
+            }
+        }
+
+        Conversation.ConversationStatus oldStatus = conversation.getStatus();
+        Conversation.ConversationStatus newStatus = request.getStatus();
+
+        if (oldStatus == newStatus) {
+            return ConversationDto.fromEntity(conversation);
+        }
+
+        // 3. Kiểm tra luồng trạng thái hợp lệ
+        if (oldStatus == Conversation.ConversationStatus.SPAM && newStatus == Conversation.ConversationStatus.OPEN && !isAdmin) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "Only Admin can change status from SPAM to OPEN");
+        }
+
+        // 4. Thực thi cập nhật
+        conversation.setStatus(newStatus);
+        if (newStatus == Conversation.ConversationStatus.RESOLVED) {
+            conversation.setClosedAt(LocalDateTime.now());
+            // Free agent capacity could be done via event to routing-service
+        }
+
+        // Save conversation - Optimistic Locking will throw exception if modified concurrently
+        conversation = conversationRepository.save(conversation);
+
+        // 5. Ghi nhận Audit Log
+        ConversationHistory history = ConversationHistory.builder()
+                .conversationId(conversationId)
+                .changedBy(agentId != null && !agentId.isBlank() ? agentId : "SYSTEM")
+                .oldStatus(oldStatus.name())
+                .newStatus(newStatus.name())
+                .reason(request.getReason())
+                .build();
+        conversationHistoryRepository.save(history);
+
+        // 6. Đẩy sự kiện
+        conversationEventProducer.publishConversationStatusUpdated(conversationId, oldStatus.name(), newStatus.name(), agentId);
 
         return ConversationDto.fromEntity(conversation);
     }

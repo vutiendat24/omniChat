@@ -124,4 +124,26 @@ public class ConversationEventProducer {
                     }
                 });
     }
+
+    public void publishConversationStatusUpdated(String conversationId, String oldStatus, String newStatus, String changedBy) {
+        Map<String, Object> event = Map.of(
+                "eventType", "conversation.status.updated",
+                "conversationId", conversationId,
+                "oldStatus", oldStatus,
+                "newStatus", newStatus,
+                "changedBy", changedBy,
+                "timestamp", LocalDateTime.now().toString()
+        );
+
+        kafkaTemplate.send(TOPIC, conversationId, event)
+                .whenComplete((result, ex) -> {
+                    if (ex == null) {
+                        log.info("Published conversation.status.updated event: conversationId={}, {} -> {}",
+                                conversationId, oldStatus, newStatus);
+                    } else {
+                        log.error("Failed to publish conversation.status.updated event for conversationId={}",
+                                conversationId, ex);
+                    }
+                });
+    }
 }

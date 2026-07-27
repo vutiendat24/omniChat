@@ -5,6 +5,7 @@ import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
 import com.omnichat.conversation.dto.SendMessageRequest;
 import com.omnichat.conversation.dto.TransferRequest;
+import com.omnichat.conversation.dto.UpdateStatusRequest;
 import com.omnichat.conversation.service.ConversationService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -100,6 +101,22 @@ public class ConversationController {
             @RequestHeader(value = "X-Agent-Id", defaultValue = "0") String requestingAgentId) {
 
         ConversationDto result = conversationService.transferConversation(id, request, requestingAgentId);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * MOD-CONV-02 - Cập nhật trạng thái hội thoại.
+     *
+     * PATCH /api/v1/conversations/{id}/status
+     */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ConversationDto> updateStatus(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateStatusRequest request,
+            @RequestHeader(value = "X-Agent-Id", defaultValue = "0") String agentId,
+            @RequestHeader(value = "X-Agent-Role", defaultValue = "AGENT") String role) {
+
+        ConversationDto result = conversationService.updateConversationStatus(id, request, agentId, role);
         return ResponseEntity.ok(result);
     }
 
