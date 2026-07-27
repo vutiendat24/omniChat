@@ -1,0 +1,153 @@
+package com.omnichat.conversation.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.omnichat.conversation.entity.Conversation;
+import com.omnichat.conversation.entity.Message;
+import com.omnichat.conversation.producer.ConversationEventProducer;
+import com.omnichat.conversation.repository.ConversationRepository;
+import com.omnichat.conversation.repository.MessageRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class ConversationServiceTest {
+
+    @Mock
+    private ConversationRepository conversationRepository;
+    @Mock
+    private MessageRepository messageRepository;
+    @Mock
+    private ConversationEventProducer conversationEventProducer;
+    @Mock
+    private RedisTemplate<String, String> redisTemplate;
+    @Mock
+    private ValueOperations<String, String> valueOperations;
+
+    @InjectMocks
+    private ConversationService conversationService;
+
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() {
+    }
+
+    @Test
+    void processNormalizedIncomingMessage_WhenNoOpenConversationExists_ShouldCreateNewOpenConversation() {
+        // Arrange
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("eventType", "integration.message.received");
+        payload.put("platform", "FACEBOOK");
+        payload.put("externalUserId", "user-123");
+        payload.put("channelConnectionId", 456L);
+        payload.put("messageId", "msg-001");
+        payload.put("messageText", "Hello");
+
+        when(conversationRepository.findByChannelIdentityIdAndStatus(anyString(), any()))
+                .thenReturn(Optional.empty());
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(true);
+        when(messageRepository.existsById(anyString())).thenReturn(false);
+        
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> {
+            Conversation c = invocation.getArgument(0);
+            if (c.getId() == null) c.setId(UUID.randomUUID().toString());
+            return c;
+        });
+
+        // Act
+        conversationService.processIncomingMessage(payload);
+
+        // Assert
+        ArgumentCaptor<Conversation> convCaptor = ArgumentCaptor.forClass(Conversation.class);
+        verify(conversationRepository, atLeastOnce()).save(convCaptor.capture());
+        
+        Conversation savedConv = convCaptor.getAllValues().get(0);
+        assertEquals("FACEBOOK:user-123", savedConv.getChannelIdentityId());
+        assertEquals(Conversation.ConversationStatus.OPEN, savedConv.getStatus());
+        
+        verify(conversationEventProducer).publishConversationCreated(eq(savedConv.getId()), eq("FACEBOOK:user-123"), eq(456L));
+        verify(conversationEventProducer).publishConversationMessageReceived(eq(savedConv.getId()), anyString(), eq("OPEN"), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void processNormalizedIncomingMessage_WhenOpenConversationExists_ShouldNotCreateNewConversation() {
+        // Arrange
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("eventType", "integration.message.received");
+        payload.put("platform", "FACEBOOK");
+        payload.put("externalUserId", "user-123");
+        payload.put("channelConnectionId", 456L);
+        payload.put("messageId", "msg-002");
+        payload.put("messageText", "Hello again");
+
+        Conversation existingConv = new Conversation();
+        existingConv.setId("existing-conv-id");
+        existingConv.setStatus(Conversation.ConversationStatus.OPEN);
+
+        // Mocking the check for existing conversation
+        // The implementation might check PENDING first, then OPEN. We'll just return Optional.empty() for PENDING and the conversation for OPEN
+        when(conversationRepository.findByChannelIdentityIdAndStatus(eq("FACEBOOK:user-123"), eq(Conversation.ConversationStatus.PENDING)))
+                .thenReturn(Optional.empty());
+        when(conversationRepository.findByChannelIdentityIdAndStatus(eq("FACEBOOK:user-123"), eq(Conversation.ConversationStatus.OPEN)))
+                .thenReturn(Optional.of(existingConv));
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(true);
+        when(messageRepository.existsById(anyString())).thenReturn(false);
+
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        conversationService.processIncomingMessage(payload);
+
+        // Assert
+        verify(conversationRepository).save(existingConv);
+        verify(conversationEventProducer, never()).publishConversationCreated(anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void processNormalizedIncomingMessage_WhenDuplicateEventReceived_ShouldBeIgnored() {
+        // Arrange
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("eventType", "integration.message.received");
+        payload.put("platform", "FACEBOOK");
+        payload.put("externalUserId", "user-123");
+        payload.put("channelConnectionId", 456L);
+        payload.put("messageId", "msg-003");
+        payload.put("messageText", "Duplicate");
+
+        String normalizedMessageId = "facebook:msg-003";
+        when(messageRepository.existsById(normalizedMessageId)).thenReturn(true);
+
+        // Act
+        conversationService.processIncomingMessage(payload);
+
+        // Assert
+        verify(conversationRepository, never()).save(any(Conversation.class));
+        verify(messageRepository, never()).save(any(Message.class));
+    }
+}

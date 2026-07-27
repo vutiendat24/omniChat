@@ -32,7 +32,7 @@ public class Conversation {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private ConversationStatus status = ConversationStatus.UNASSIGNED;
+    private ConversationStatus status = ConversationStatus.OPEN;
 
     @Column(name = "last_activity_at")
     private LocalDateTime lastActivityAt;
@@ -50,6 +50,6 @@ public class Conversation {
     private LocalDateTime updatedAt;
 
     public enum ConversationStatus {
-        UNASSIGNED, OPEN, CLOSED
+        OPEN, PENDING, RESOLVED, SPAM
     }
 }

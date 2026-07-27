@@ -203,7 +203,7 @@ graph TD
 | `integration-service` | PostgreSQL | `channel_connections` (tenant_id, channel_id, avatar_url, ACTIVE/INACTIVE), `oauth_tokens` (AES-256 encrypted), `webhook_logs`, `outbound_queue`, `oauth_states` (Redis TTL 15min) | Token mã hóa AES-256 at rest; Channel unique toàn hệ thống |
 | `livestream-service` | PostgreSQL | `livestream_sessions` (LIVE/ENDED), `platform_connections`, `live_tokens` | Session lifecycle management |
 | `customer-service` | PostgreSQL | `customers`, `channel_identities` (1 customer ↔ nhiều platform_id), `merge_history` | Multi-channel identity mapping |
-| `conversation-service` | MongoDB | `conversations` (OPEN/CLOSED/PENDING/SPAM, sla_due_at), `messages` (INBOUND/OUTBOUND, SENDING/DELIVERED), `quick_reply_templates`, `tags` | Idempotency key (message_id); Distributed Lock Redis; Batch insert cho livestream |
+| `conversation-service` | MySQL | `conversations` (OPEN/RESOLVED/PENDING/SPAM, sla_due_at), `messages` (INBOUND/OUTBOUND, SENDING/DELIVERED), `quick_reply_templates`, `tags` | Idempotency key (message_id); Distributed Lock Redis; Batch insert cho livestream |
 | `moderation-service` | PostgreSQL + Redis | `spam_rules`, `keyword_blacklists` per tenant (PG); `rate_counters` per sender (Redis TTL) | Redis rate check < 5ms |
 | `routing-service` | Redis | `agent_status`, `agent_workload`, `conversation_queue` | Sub-millisecond R/W; TTL sau UserOfflineEvent |
 | `analytics-service` | ClickHouse / ES | `event_logs`, `aggregated_metrics`, `reports` | OLAP query; Event Sourcing từ Kafka |
@@ -266,7 +266,7 @@ graph TD
 | Mã | Chức năng | Business Rules nổi bật | Edge Cases |
 |---|---|---|---|
 | MOD-CONV-01 | Tạo mới hội thoại | Chỉ 1 OPEN/PENDING per Customer per Channel; Session Window reset SLA khi hội thoại mới | Duplicate event → Idempotency (message_id); Race Condition → Distributed Lock Redis (customer_id+channel_id); DB lỗi → DLQ |
-| MOD-CONV-02 | Cập nhật trạng thái | OPEN/CLOSED/PENDING/SPAM; Auto-close scheduler sau X giờ không tương tác | |
+| MOD-CONV-02 | Cập nhật trạng thái | OPEN/RESOLVED/PENDING/SPAM; Auto-close scheduler sau X giờ không tương tác | |
 | MOD-CONV-03 | Lưu & đồng bộ tin nhắn | INBOUND/OUTBOUND type; Batch insert cho livestream comment; Idempotency key | |
 | MOD-CONV-04 | Filter & Search Inbox | Theo status/channel/time/tag/agent; Full-text search MongoDB | |
 | MOD-CONV-05 | Conversation Tagging | Agent/Admin/Auto-tagging; Tag per tenant | |

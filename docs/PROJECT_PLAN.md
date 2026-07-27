@@ -59,7 +59,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 
 ## 9. M07 — Conversation & Inbox
 *(Phụ thuộc: M03, M05, M06)*
-- [ ] MOD-CONV-01: Tạo mới hội thoại (Create Conversation) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
+- [x] MOD-CONV-01: Tạo mới hội thoại (Create Conversation) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [ ] MOD-CONV-02: Cập nhật trạng thái hội thoại (Update Conversation Status) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [ ] MOD-CONV-03: Lưu trữ & đồng bộ tin nhắn (Save & Sync Message) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [ ] MOD-CONV-04: Lọc và tìm kiếm hội thoại (Filter & Search Inbox) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)

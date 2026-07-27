@@ -17,11 +17,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -31,6 +33,7 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final ConversationEventProducer conversationEventProducer;
+    private final RedisTemplate<String, String> redisTemplate;
 
     /**
      * Task 3.2.2.1 - Upsert Conversation and Insert Message.
@@ -62,7 +65,7 @@ public class ConversationService {
 
         // 1. Upsert Conversation
         Conversation conversation = conversationRepository
-                .findByChannelIdentityIdAndStatus(senderId, Conversation.ConversationStatus.UNASSIGNED)
+                .findByChannelIdentityIdAndStatus(senderId, Conversation.ConversationStatus.PENDING)
                 .or(() -> conversationRepository.findByChannelIdentityIdAndStatus(senderId, Conversation.ConversationStatus.OPEN))
                 .orElse(null);
 
@@ -74,7 +77,7 @@ public class ConversationService {
                     .id(UUID.randomUUID().toString())
                     .channelIdentityId(senderId)
                     .channelConnectionId(Long.parseLong(recipientId.length() > 18 ? "0" : recipientId.isEmpty() ? "0" : recipientId))
-                    .status(Conversation.ConversationStatus.UNASSIGNED)
+                    .status(Conversation.ConversationStatus.OPEN)
                     .lastActivityAt(LocalDateTime.now())
                     .build();
             conversation = conversationRepository.save(conversation);
@@ -121,49 +124,67 @@ public class ConversationService {
             throw new IllegalArgumentException("externalUserId is required");
         }
 
-        Conversation conversation = findActiveConversation(channelIdentityId);
-        if (conversation == null && "FACEBOOK".equals(platform)) {
-            conversation = findActiveConversation(externalUserId);
+        // Idempotency Check
+        if (messageRepository.existsById(messageId)) {
+            log.info("Message {} already processed, skipping duplicate event", messageId);
+            return;
         }
 
-        boolean isNewConversation = false;
+        // Distributed Lock to prevent Race Condition
+        String lockKey = "lock:conversation:" + channelIdentityId;
+        Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", 10, TimeUnit.SECONDS);
+        if (Boolean.FALSE.equals(lockAcquired)) {
+            log.warn("Could not acquire lock for {}, another thread is creating conversation. Throwing to retry.", channelIdentityId);
+            throw new RuntimeException("Could not acquire lock for conversation creation");
+        }
 
-        if (conversation == null) {
-            isNewConversation = true;
-            conversation = Conversation.builder()
-                    .id(UUID.randomUUID().toString())
-                    .channelIdentityId(channelIdentityId)
-                    .channelConnectionId(channelConnectionId)
-                    .status(Conversation.ConversationStatus.UNASSIGNED)
-                    .lastActivityAt(LocalDateTime.now())
+        try {
+            Conversation conversation = findActiveConversation(channelIdentityId);
+            if (conversation == null && "FACEBOOK".equals(platform)) {
+                conversation = findActiveConversation(externalUserId);
+            }
+
+            boolean isNewConversation = false;
+
+            if (conversation == null) {
+                isNewConversation = true;
+                conversation = Conversation.builder()
+                        .id(UUID.randomUUID().toString())
+                        .channelIdentityId(channelIdentityId)
+                        .channelConnectionId(channelConnectionId)
+                        .status(Conversation.ConversationStatus.OPEN)
+                        .lastActivityAt(LocalDateTime.now())
+                        .build();
+                conversation = conversationRepository.save(conversation);
+                log.info("Created new {} conversation: {}", platform, conversation.getId());
+            } else {
+                conversation.setLastActivityAt(LocalDateTime.now());
+                conversation = conversationRepository.save(conversation);
+                log.info("Updated existing {} conversation: {}", platform, conversation.getId());
+            }
+
+            Message message = Message.builder()
+                    .id(messageId)
+                    .conversationId(conversation.getId())
+                    .senderType(Message.SenderType.CUSTOMER)
+                    .senderId(channelIdentityId)
+                    .contentText(messageText)
+                    .status(Message.MessageStatus.SENT)
+                    .sentAt(LocalDateTime.now())
                     .build();
-            conversation = conversationRepository.save(conversation);
-            log.info("Created new {} conversation: {}", platform, conversation.getId());
-        } else {
-            conversation.setLastActivityAt(LocalDateTime.now());
-            conversation = conversationRepository.save(conversation);
-            log.info("Updated existing {} conversation: {}", platform, conversation.getId());
-        }
+            messageRepository.save(message);
+            log.info("Saved {} message: {} for conversation: {}", platform, message.getId(), conversation.getId());
 
-        Message message = Message.builder()
-                .id(messageId)
-                .conversationId(conversation.getId())
-                .senderType(Message.SenderType.CUSTOMER)
-                .senderId(channelIdentityId)
-                .contentText(messageText)
-                .status(Message.MessageStatus.SENT)
-                .sentAt(LocalDateTime.now())
-                .build();
-        messageRepository.save(message);
-        log.info("Saved {} message: {} for conversation: {}", platform, message.getId(), conversation.getId());
-
-        if (isNewConversation) {
-            conversationEventProducer.publishConversationCreated(
-                    conversation.getId(), channelIdentityId, conversation.getChannelConnectionId());
+            if (isNewConversation) {
+                conversationEventProducer.publishConversationCreated(
+                        conversation.getId(), channelIdentityId, conversation.getChannelConnectionId());
+            }
+            conversationEventProducer.publishConversationMessageReceived(
+                    conversation.getId(), message.getId(), conversation.getStatus().name(),
+                    null, null, null);
+        } finally {
+            redisTemplate.delete(lockKey);
         }
-        conversationEventProducer.publishConversationMessageReceived(
-                conversation.getId(), message.getId(), conversation.getStatus().name(),
-                null, null, null);
     }
 
     /**
@@ -316,10 +337,10 @@ public class ConversationService {
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
                         "Conversation not found: " + conversationId));
 
-        // Guard: only assign if conversation is still UNASSIGNED
-        if (conversation.getStatus() != Conversation.ConversationStatus.UNASSIGNED) {
-            log.warn("Conversation {} is already in status {}, skipping assignment to agent {}",
-                    conversationId, conversation.getStatus(), agentId);
+        // Guard: only assign if conversation is not assigned
+        if (conversation.getAssignedAgentId() != null) {
+            log.warn("Conversation {} is already assigned to {}, skipping assignment to agent {}",
+                    conversationId, conversation.getAssignedAgentId(), agentId);
             return;
         }
 
@@ -381,9 +402,9 @@ public class ConversationService {
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
                         "Conversation not found: " + conversationId));
 
-        // 3. Guard: only OPEN or UNASSIGNED conversations can be transferred
-        if (conversation.getStatus() == Conversation.ConversationStatus.CLOSED) {
-            throw new IllegalStateException("Cannot transfer a CLOSED conversation: " + conversationId);
+        // 3. Guard: only OPEN or PENDING conversations can be transferred
+        if (conversation.getStatus() == Conversation.ConversationStatus.RESOLVED) {
+            throw new IllegalStateException("Cannot transfer a RESOLVED conversation: " + conversationId);
         }
 
         // 4. Guard: cannot transfer to the same agent
@@ -398,8 +419,8 @@ public class ConversationService {
         // 5. Update conversation: assign to new agent
         conversation.setAssignedAgentId(newAgentId);
 
-        // If UNASSIGNED → OPEN (manual assignment by Supervisor/Admin)
-        if (conversation.getStatus() == Conversation.ConversationStatus.UNASSIGNED) {
+        // If unassigned → OPEN (manual assignment by Supervisor/Admin)
+        if (conversation.getAssignedAgentId() == null) {
             conversation.setStatus(Conversation.ConversationStatus.OPEN);
         }
 
@@ -470,7 +491,7 @@ public class ConversationService {
 
     private Conversation findActiveConversation(String channelIdentityId) {
         return conversationRepository
-                .findByChannelIdentityIdAndStatus(channelIdentityId, Conversation.ConversationStatus.UNASSIGNED)
+                .findByChannelIdentityIdAndStatus(channelIdentityId, Conversation.ConversationStatus.PENDING)
                 .or(() -> conversationRepository.findByChannelIdentityIdAndStatus(
                         channelIdentityId, Conversation.ConversationStatus.OPEN))
                 .orElse(null);
