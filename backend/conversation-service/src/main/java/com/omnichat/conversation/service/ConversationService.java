@@ -57,6 +57,10 @@ public class ConversationService {
             processNormalizedIncomingMessage(eventPayload);
             return;
         }
+        if ("integration.message.recalled".equals(eventPayload.path("eventType").asText(""))) {
+            processMessageRecall(eventPayload);
+            return;
+        }
 
         // Extract fields from Facebook webhook payload structure
         JsonNode entry = eventPayload.path("entry").get(0);
@@ -122,6 +126,10 @@ public class ConversationService {
         String rawMessageId = eventPayload.path("messageId").asText(UUID.randomUUID().toString());
         String messageId = normalizeExternalMessageId(platform, rawMessageId);
         String messageText = eventPayload.path("messageText").asText(null);
+        String payload = eventPayload.path("payload").isMissingNode() ? null : eventPayload.path("payload").toString();
+        String messageTypeStr = eventPayload.path("messageType").asText("TEXT").toUpperCase();
+        Message.MessageType messageType = Message.MessageType.valueOf(messageTypeStr);
+        Long originCreatedAt = eventPayload.path("originCreatedAt").asLong(0L);
         String channelIdentityId = platform + ":" + externalUserId;
 
         if (externalUserId == null || externalUserId.isBlank()) {
@@ -150,6 +158,9 @@ public class ConversationService {
 
             boolean isNewConversation = false;
 
+            LocalDateTime now = LocalDateTime.now();
+            String preview = messageText != null ? (messageText.length() > 50 ? messageText.substring(0, 50) + "..." : messageText) : "[" + messageTypeStr + "]";
+
             if (conversation == null) {
                 isNewConversation = true;
                 conversation = Conversation.builder()
@@ -157,12 +168,16 @@ public class ConversationService {
                         .channelIdentityId(channelIdentityId)
                         .channelConnectionId(channelConnectionId)
                         .status(Conversation.ConversationStatus.OPEN)
-                        .lastActivityAt(LocalDateTime.now())
+                        .lastActivityAt(now)
+                        .lastMessageAt(now)
+                        .lastMessagePreview(preview)
                         .build();
                 conversation = conversationRepository.save(conversation);
                 log.info("Created new {} conversation: {}", platform, conversation.getId());
             } else {
-                conversation.setLastActivityAt(LocalDateTime.now());
+                conversation.setLastActivityAt(now);
+                conversation.setLastMessageAt(now);
+                conversation.setLastMessagePreview(preview);
                 conversation = conversationRepository.save(conversation);
                 log.info("Updated existing {} conversation: {}", platform, conversation.getId());
             }
@@ -172,9 +187,12 @@ public class ConversationService {
                     .conversationId(conversation.getId())
                     .senderType(Message.SenderType.CUSTOMER)
                     .senderId(channelIdentityId)
+                    .messageType(messageType)
+                    .payload(payload)
                     .contentText(messageText)
                     .status(Message.MessageStatus.SENT)
-                    .sentAt(LocalDateTime.now())
+                    .sentAt(now)
+                    .originCreatedAt(originCreatedAt > 0 ? java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(originCreatedAt), java.time.ZoneId.systemDefault()) : null)
                     .build();
             messageRepository.save(message);
             log.info("Saved {} message: {} for conversation: {}", platform, message.getId(), conversation.getId());
@@ -188,6 +206,32 @@ public class ConversationService {
                     null, null, null);
         } finally {
             redisTemplate.delete(lockKey);
+        }
+    }
+
+    private void processMessageRecall(JsonNode eventPayload) {
+        String platform = eventPayload.path("platform").asText("UNKNOWN").toUpperCase();
+        String rawMessageId = eventPayload.path("messageId").asText("");
+        String messageId = normalizeExternalMessageId(platform, rawMessageId);
+
+        if (messageId.isBlank()) {
+            return;
+        }
+
+        Message message = messageRepository.findById(messageId).orElse(null);
+        if (message != null) {
+            message.setPayload("\"Tin nhắn đã bị thu hồi\"");
+            message.setContentText("Tin nhắn đã bị thu hồi"); // Update contentText for backward compatibility
+            message.setIsDeleted(true);
+            message.setStatus(Message.MessageStatus.UNSENT);
+            messageRepository.save(message);
+            log.info("Message {} was recalled and marked as deleted", messageId);
+            
+            conversationEventProducer.publishConversationMessageReceived(
+                    message.getConversationId(), message.getId(), "RECALLED",
+                    null, null, null); // Signal UI
+        } else {
+            log.warn("Received recall event for unknown message {}", messageId);
         }
     }
 

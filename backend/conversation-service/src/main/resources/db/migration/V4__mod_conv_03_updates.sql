@@ -1,0 +1,9 @@
+ALTER TABLE conversations
+ADD COLUMN last_message_at TIMESTAMP NULL,
+ADD COLUMN last_message_preview VARCHAR(255) NULL;
+
+ALTER TABLE messages
+ADD COLUMN message_type VARCHAR(50) NULL,
+ADD COLUMN payload JSON NULL,
+ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE,
+ADD COLUMN origin_created_at TIMESTAMP NULL;

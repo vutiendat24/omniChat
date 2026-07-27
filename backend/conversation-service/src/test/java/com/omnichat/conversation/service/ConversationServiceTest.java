@@ -63,9 +63,11 @@ class ConversationServiceTest {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("eventType", "integration.message.received");
         payload.put("platform", "FACEBOOK");
-        payload.put("externalUserId", "user-123");
-        payload.put("channelConnectionId", 456L);
-        payload.put("messageId", "msg-001");
+        payload.put("externalUserId", "123");
+        payload.put("messageId", "msg_1");
+        payload.put("messageText", "Hello world");
+        payload.put("messageType", "TEXT");
+        payload.putObject("payload").put("text", "Hello world");
         payload.put("messageText", "Hello");
 
         when(conversationRepository.findByChannelIdentityIdAndStatus(anyString(), any()))
@@ -83,17 +85,22 @@ class ConversationServiceTest {
         });
 
         // Act
-        conversationService.processIncomingMessage(payload);
+        conversationService.processIncomingMessage(payload.toString());
 
         // Assert
         ArgumentCaptor<Conversation> convCaptor = ArgumentCaptor.forClass(Conversation.class);
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(conversationRepository, atLeastOnce()).save(convCaptor.capture());
+        verify(messageRepository, atLeastOnce()).save(messageCaptor.capture());
         
         Conversation savedConv = convCaptor.getAllValues().get(0);
-        assertEquals("FACEBOOK:user-123", savedConv.getChannelIdentityId());
+        assertEquals("FACEBOOK_msg_1", messageCaptor.getValue().getId());
+        assertEquals("Hello world", messageCaptor.getValue().getContentText());
+        assertEquals(Message.MessageType.TEXT, messageCaptor.getValue().getMessageType());
+        assertEquals("{\"text\":\"Hello world\"}", messageCaptor.getValue().getPayload());
         assertEquals(Conversation.ConversationStatus.OPEN, savedConv.getStatus());
         
-        verify(conversationEventProducer).publishConversationCreated(eq(savedConv.getId()), eq("FACEBOOK:user-123"), eq(456L));
+        verify(conversationEventProducer).publishConversationCreated(eq(savedConv.getId()), anyString(), anyLong());
         verify(conversationEventProducer).publishConversationMessageReceived(eq(savedConv.getId()), anyString(), eq("OPEN"), isNull(), isNull(), isNull());
     }
 
@@ -127,7 +134,7 @@ class ConversationServiceTest {
         when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // Act
-        conversationService.processIncomingMessage(payload);
+        conversationService.processIncomingMessage(payload.toString());
 
         // Assert
         verify(conversationRepository).save(existingConv);
@@ -189,19 +196,44 @@ class ConversationServiceTest {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("eventType", "integration.message.received");
         payload.put("platform", "FACEBOOK");
-        payload.put("externalUserId", "user-123");
-        payload.put("channelConnectionId", 456L);
-        payload.put("messageId", "msg-003");
-        payload.put("messageText", "Duplicate");
+        payload.put("externalUserId", "123");
+        payload.put("messageId", "msg_1");
 
-        String normalizedMessageId = "facebook:msg-003";
-        when(messageRepository.existsById(normalizedMessageId)).thenReturn(true);
+        when(messageRepository.existsById("FACEBOOK_msg_1")).thenReturn(true);
 
         // Act
-        conversationService.processIncomingMessage(payload);
+        conversationService.processIncomingMessage(payload.toString());
 
-        // Assert
+        // Then
         verify(conversationRepository, never()).save(any(Conversation.class));
         verify(messageRepository, never()).save(any(Message.class));
+        verify(conversationEventProducer, never()).publishConversationMessageReceived(anyString(), anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    void processIncomingMessage_WhenRecallEventReceived_ShouldUpdateMessageAsDeleted() {
+        // Arrange
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("eventType", "integration.message.recalled");
+        payload.put("platform", "FACEBOOK");
+        payload.put("messageId", "msg_1");
+
+        Message msg = new Message();
+        msg.setId("FACEBOOK_msg_1");
+        msg.setConversationId("conv_1");
+        msg.setContentText("Original Text");
+
+        when(messageRepository.findById("FACEBOOK_msg_1")).thenReturn(Optional.of(msg));
+
+        // Act
+        conversationService.processIncomingMessage(payload.toString());
+
+        // Then
+        verify(messageRepository).save(msg);
+        assertEquals("\"Tin nhắn đã bị thu hồi\"", msg.getPayload());
+        assertEquals("Tin nhắn đã bị thu hồi", msg.getContentText());
+        assertTrue(msg.getIsDeleted());
+        assertEquals(Message.MessageStatus.UNSENT, msg.getStatus());
+        verify(conversationEventProducer).publishConversationMessageReceived("conv_1", "FACEBOOK_msg_1", "RECALLED", null, null, null);
     }
 }

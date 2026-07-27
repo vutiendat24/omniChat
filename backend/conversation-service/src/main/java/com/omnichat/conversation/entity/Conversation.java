@@ -37,6 +37,12 @@ public class Conversation {
     @Column(name = "last_activity_at")
     private LocalDateTime lastActivityAt;
 
+    @Column(name = "last_message_at")
+    private LocalDateTime lastMessageAt;
+
+    @Column(name = "last_message_preview")
+    private String lastMessagePreview;
+
     @Column(name = "is_sla_breached")
     @Builder.Default
     private Boolean isSlABreached = false;

@@ -35,6 +35,20 @@ public class Message {
     private String contentAttachments;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "message_type")
+    private MessageType messageType;
+
+    @Column(name = "payload", columnDefinition = "JSON")
+    private String payload;
+
+    @Column(name = "is_deleted")
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(name = "origin_created_at")
+    private LocalDateTime originCreatedAt;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
     private MessageStatus status = MessageStatus.SENT;
@@ -48,6 +62,10 @@ public class Message {
     }
 
     public enum MessageStatus {
-        SENT, DELIVERED, READ, FAILED
+        SENT, DELIVERED, READ, FAILED, UNSENT
+    }
+
+    public enum MessageType {
+        TEXT, IMAGE, VIDEO, FILE, ATTACHMENT, SYSTEM_EVENT
     }
 }
