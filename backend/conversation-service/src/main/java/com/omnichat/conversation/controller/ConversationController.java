@@ -33,9 +33,16 @@ public class ConversationController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "-last_activity_at") String sort) {
+            @RequestParam(required = false, name = "channel_id") Long channelId,
+            @RequestParam(required = false, name = "agent_id") Long agentId,
+            @RequestParam(required = false, name = "tag_id") Long tagId,
+            @RequestParam(required = false, name = "search_keyword") String searchKeyword,
+            @RequestParam(defaultValue = "-last_message_at") String sort,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId,
+            @RequestHeader(value = "X-User-Role", required = false) String currentUserRole) {
 
-        PaginatedResponse<ConversationDto> response = conversationService.getConversations(page, limit, status, sort);
+        PaginatedResponse<ConversationDto> response = conversationService.getConversations(
+                page, limit, status, channelId, agentId, tagId, searchKeyword, sort, currentUserId, currentUserRole);
         return ResponseEntity.ok(response);
     }
 

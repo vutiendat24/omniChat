@@ -19,6 +19,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import java.util.List;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -235,5 +239,48 @@ class ConversationServiceTest {
         assertTrue(msg.getIsDeleted());
         assertEquals(Message.MessageStatus.UNSENT, msg.getStatus());
         verify(conversationEventProducer).publishConversationMessageReceived("conv_1", "FACEBOOK_msg_1", "RECALLED", null, null, null);
+    }
+
+    @Test
+    void getConversations_WhenAgentRequests_ShouldReturnAssignedOrUnassigned() {
+        // Arrange
+        Conversation conv1 = new Conversation();
+        conv1.setId("conv-1");
+        conv1.setStatus(Conversation.ConversationStatus.OPEN);
+
+        Page<Conversation> mockPage = new PageImpl<>(List.of(conv1));
+        when(conversationRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(mockPage);
+
+        // Act
+        com.omnichat.conversation.dto.PaginatedResponse<com.omnichat.conversation.dto.ConversationDto> response = 
+                conversationService.getConversations(1, 20, "OPEN", null, null, null, null, "-last_message_at", "10", "AGENT");
+
+        // Then
+        assertNotNull(response);
+        assertEquals(1, response.getData().size());
+        assertEquals("conv-1", response.getData().get(0).getId());
+    }
+
+    @Test
+    void getConversations_WhenAdminRequestsAnotherAgent_ShouldReturnThatAgentConversations() {
+        // Arrange
+        Conversation conv1 = new Conversation();
+        conv1.setId("conv-1");
+        conv1.setAssignedAgentId(20L);
+        conv1.setStatus(Conversation.ConversationStatus.RESOLVED);
+
+        Page<Conversation> mockPage = new PageImpl<>(List.of(conv1));
+        when(conversationRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+                .thenReturn(mockPage);
+
+        // Act
+        com.omnichat.conversation.dto.PaginatedResponse<com.omnichat.conversation.dto.ConversationDto> response = 
+                conversationService.getConversations(1, 20, "RESOLVED", null, 20L, null, null, "-last_message_at", "10", "ADMIN");
+
+        // Then
+        assertNotNull(response);
+        assertEquals(1, response.getData().size());
+        assertEquals("conv-1", response.getData().get(0).getId());
     }
 }

@@ -20,11 +20,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -239,35 +243,75 @@ public class ConversationService {
      * Task 3.3.1.1 - GET /conversations with pagination, filtering, sorting.
      * Follows the API spec: page (1-based), limit, status filter, sort field with - prefix for DESC.
      */
-    public PaginatedResponse<ConversationDto> getConversations(int page, int limit, String status, String sort) {
-        // Parse sort parameter: "-last_activity_at" means DESC, "last_activity_at" means ASC
+    public PaginatedResponse<ConversationDto> getConversations(
+            int page, int limit, String status, Long channelId, Long agentId, Long tagId,
+            String searchKeyword, String sort, String currentUserId, String currentUserRole) {
+        
+        // Parse sort parameter: "-last_message_at" means DESC, "last_message_at" means ASC
         Sort sortOrder;
         if (sort != null && !sort.isEmpty()) {
             boolean isDesc = sort.startsWith("-");
             String sortField = isDesc ? sort.substring(1) : sort;
-            // Map API field names to entity field names (snake_case -> camelCase)
             String entityField = mapToEntityField(sortField);
             sortOrder = isDesc ? Sort.by(Sort.Direction.DESC, entityField) : Sort.by(Sort.Direction.ASC, entityField);
         } else {
-            // Default sort: -last_activity_at (most recent first)
-            sortOrder = Sort.by(Sort.Direction.DESC, "lastActivityAt");
+            sortOrder = Sort.by(Sort.Direction.DESC, "lastMessageAt");
         }
 
-        // Spring Data uses 0-based page index, but API spec uses 1-based
         Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.min(limit, 100), sortOrder);
 
-        Page<Conversation> conversationPage;
-        if (status != null && !status.isEmpty()) {
-            try {
-                Conversation.ConversationStatus statusEnum = Conversation.ConversationStatus.valueOf(status.toUpperCase());
-                conversationPage = conversationRepository.findByStatus(statusEnum, pageable);
-            } catch (IllegalArgumentException e) {
-                log.warn("Invalid status filter: {}, returning all conversations", status);
-                conversationPage = conversationRepository.findAll(pageable);
+        Specification<Conversation> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            
+            boolean isAdmin = "ADMIN".equalsIgnoreCase(currentUserRole) || "SUPERVISOR".equalsIgnoreCase(currentUserRole);
+            if (!isAdmin) {
+                Long currentAgentId = currentUserId != null ? Long.parseLong(currentUserId) : null;
+                Long finalAgentId = agentId;
+                if (agentId != null && !agentId.equals(currentAgentId)) {
+                    finalAgentId = currentAgentId; // Ignore requested agentId and force to current agent
+                }
+                
+                if (finalAgentId != null) {
+                    predicates.add(cb.equal(root.get("assignedAgentId"), finalAgentId));
+                } else {
+                    predicates.add(cb.or(
+                        cb.equal(root.get("assignedAgentId"), currentAgentId),
+                        cb.isNull(root.get("assignedAgentId"))
+                    ));
+                }
+            } else {
+                if (agentId != null) {
+                    predicates.add(cb.equal(root.get("assignedAgentId"), agentId));
+                }
             }
-        } else {
-            conversationPage = conversationRepository.findAll(pageable);
-        }
+
+            if (status != null && !status.isEmpty()) {
+                try {
+                    Conversation.ConversationStatus statusEnum = Conversation.ConversationStatus.valueOf(status.toUpperCase());
+                    predicates.add(cb.equal(root.get("status"), statusEnum));
+                } catch (IllegalArgumentException e) {
+                    // Ignore invalid status
+                }
+            } else if (!isAdmin && (searchKeyword == null || searchKeyword.isBlank())) {
+                predicates.add(cb.equal(root.get("status"), Conversation.ConversationStatus.OPEN));
+            }
+
+            if (channelId != null) {
+                predicates.add(cb.equal(root.get("channelConnectionId"), channelId));
+            }
+            
+            if (searchKeyword != null && !searchKeyword.isBlank()) {
+                String likePattern = "%" + searchKeyword.toLowerCase() + "%";
+                predicates.add(cb.or(
+                    cb.like(cb.lower(root.get("customerName")), likePattern),
+                    cb.like(root.get("customerPhone"), likePattern)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Conversation> conversationPage = conversationRepository.findAll(spec, pageable);
 
         return PaginatedResponse.<ConversationDto>builder()
                 .data(conversationPage.getContent().stream()

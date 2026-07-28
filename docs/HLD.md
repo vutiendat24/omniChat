@@ -203,7 +203,7 @@ graph TD
 | `integration-service` | PostgreSQL | `channel_connections` (tenant_id, channel_id, avatar_url, ACTIVE/INACTIVE), `oauth_tokens` (AES-256 encrypted), `webhook_logs`, `outbound_queue`, `oauth_states` (Redis TTL 15min) | Token mã hóa AES-256 at rest; Channel unique toàn hệ thống |
 | `livestream-service` | PostgreSQL | `livestream_sessions` (LIVE/ENDED), `platform_connections`, `live_tokens` | Session lifecycle management |
 | `customer-service` | PostgreSQL | `customers`, `channel_identities` (1 customer ↔ nhiều platform_id), `merge_history` | Multi-channel identity mapping |
-| `conversation-service` | MySQL | `conversations` (OPEN/RESOLVED/PENDING/SPAM, sla_due_at, last_message_at), `conversation_history`, `messages` (message_type, payload JSON, is_deleted, INBOUND/OUTBOUND, SENDING/DELIVERED), `quick_reply_templates`, `tags` | Idempotency key (message_id); Distributed Lock Redis; Batch insert cho livestream |
+| `conversation-service` | MySQL | `conversations` (OPEN/RESOLVED/PENDING/SPAM, sla_due_at, last_message_at, customer_name, customer_phone, customer_avatar), `conversation_history`, `messages` (message_type, payload JSON, is_deleted, INBOUND/OUTBOUND, SENDING/DELIVERED), `quick_reply_templates`, `tags` | Idempotency key (message_id); Distributed Lock Redis; Batch insert cho livestream |
 | `moderation-service` | PostgreSQL + Redis | `spam_rules`, `keyword_blacklists` per tenant (PG); `rate_counters` per sender (Redis TTL) | Redis rate check < 5ms |
 | `routing-service` | Redis | `agent_status`, `agent_workload`, `conversation_queue` | Sub-millisecond R/W; TTL sau UserOfflineEvent |
 | `analytics-service` | ClickHouse / ES | `event_logs`, `aggregated_metrics`, `reports` | OLAP query; Event Sourcing từ Kafka |

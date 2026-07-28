@@ -19,6 +19,11 @@ public class ConversationDto {
     private Conversation.ConversationStatus status;
     private Boolean isSlABreached;
     private LocalDateTime lastActivityAt;
+    private LocalDateTime lastMessageAt;
+    private String lastMessagePreview;
+    private String customerName;
+    private String customerPhone;
+    private String customerAvatar;
     private LocalDateTime createdAt;
 
     public static ConversationDto fromEntity(Conversation entity) {
@@ -30,6 +35,11 @@ public class ConversationDto {
                 .status(entity.getStatus())
                 .isSlABreached(entity.getIsSlABreached())
                 .lastActivityAt(entity.getLastActivityAt())
+                .lastMessageAt(entity.getLastMessageAt())
+                .lastMessagePreview(entity.getLastMessagePreview())
+                .customerName(entity.getCustomerName())
+                .customerPhone(entity.getCustomerPhone())
+                .customerAvatar(entity.getCustomerAvatar())
                 .createdAt(entity.getCreatedAt())
                 .build();
     }

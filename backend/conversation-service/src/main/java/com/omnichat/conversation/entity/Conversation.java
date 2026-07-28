@@ -43,6 +43,15 @@ public class Conversation {
     @Column(name = "last_message_preview")
     private String lastMessagePreview;
 
+    @Column(name = "customer_name")
+    private String customerName;
+
+    @Column(name = "customer_phone")
+    private String customerPhone;
+
+    @Column(name = "customer_avatar")
+    private String customerAvatar;
+
     @Column(name = "is_sla_breached")
     @Builder.Default
     private Boolean isSlABreached = false;
