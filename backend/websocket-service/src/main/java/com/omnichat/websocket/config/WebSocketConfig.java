@@ -31,6 +31,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final AgentHandshakeInterceptor agentHandshakeInterceptor;
+    private final com.omnichat.websocket.handler.AgentHandshakeHandler agentHandshakeHandler;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -56,12 +57,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // STOMP WebSocket endpoint with SockJS fallback
         registry.addEndpoint("/ws")
                 .addInterceptors(agentHandshakeInterceptor)
+                .setHandshakeHandler(agentHandshakeHandler)
                 .setAllowedOriginPatterns("*")  // Allow all origins in dev (restrict in prod)
                 .withSockJS();
 
         // Also register without SockJS for native WebSocket clients (e.g., Postman)
         registry.addEndpoint("/ws")
                 .addInterceptors(agentHandshakeInterceptor)
+                .setHandshakeHandler(agentHandshakeHandler)
                 .setAllowedOriginPatterns("*");
     }
 }

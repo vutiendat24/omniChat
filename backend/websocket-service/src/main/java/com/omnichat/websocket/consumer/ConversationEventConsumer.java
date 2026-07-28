@@ -101,13 +101,6 @@ public class ConversationEventConsumer {
         log.info("Pushed conversation.updated to agent {} via WS: conversationId={}", agentId, conversationId);
     }
 
-    /**
-     * Handle conversation.message.received → push to the assigned agent (if known).
-     *
-     * Payload:
-     * { "eventType":"conversation.message.received", "conversationId":"...",
-     *   "conversationStatus":"OPEN", "messageId":"..." }
-     */
     private void handleMessageReceived(JsonNode event) {
         String conversationId = event.path("conversationId").asText();
         String conversationStatus = event.path("conversationStatus").asText("");
@@ -121,13 +114,19 @@ public class ConversationEventConsumer {
         }
 
         // For assigned conversations, try to push to the specific agent
-        // Note: the event doesn't always carry agentId, so we broadcast to topic
-        // and let the frontend filter by conversationId
-        Map<String, Object> payload = buildPayload(event, "NEW_MESSAGE");
-        messagingTemplate.convertAndSend("/topic/conversations", payload);
-
-        log.info("Broadcast new message to /topic/conversations: conversationId={}, status={}",
-                conversationId, conversationStatus);
+        String targetAgentId = event.path("assignedAgentId").asText("");
+        if (targetAgentId != null && !targetAgentId.isBlank() && !"0".equals(targetAgentId)) {
+            if (sessionManager.isAgentConnected(targetAgentId)) {
+                Map<String, Object> payload = buildPayload(event, "NEW_MESSAGE");
+                messagingTemplate.convertAndSendToUser(targetAgentId, "/queue/conversations", payload);
+                log.info("Pushed new message to agent {}: conversationId={}", targetAgentId, conversationId);
+            } else {
+                log.debug("Agent {} not connected, skipping push for new message in conversation {}", targetAgentId, conversationId);
+            }
+        } else {
+            // Fallback if no assignedAgentId provided but it is assigned (should not happen in real scenario if Kafka event is well-formed)
+            log.warn("Assigned conversation message event missing assignedAgentId: conversationId={}", conversationId);
+        }
     }
 
     /**
