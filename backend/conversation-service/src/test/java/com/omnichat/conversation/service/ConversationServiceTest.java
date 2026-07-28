@@ -3,6 +3,7 @@ package com.omnichat.conversation.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.omnichat.conversation.dto.ConversationDto;
+import com.omnichat.conversation.dto.MessageDto;
 import com.omnichat.conversation.dto.PaginatedResponse;
 import com.omnichat.conversation.dto.TransferRequest;
 import com.omnichat.conversation.dto.UpdateStatusRequest;
@@ -14,6 +15,7 @@ import com.omnichat.conversation.producer.ConversationEventProducer;
 import com.omnichat.conversation.repository.ConversationHistoryRepository;
 import com.omnichat.conversation.repository.ConversationRepository;
 import com.omnichat.conversation.repository.MessageRepository;
+import com.omnichat.conversation.repository.PrivateReplyRecordRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,6 +61,8 @@ class ConversationServiceTest {
     private RedisTemplate<String, String> redisTemplate;
     @Mock
     private com.omnichat.conversation.repository.TagRepository tagRepository;
+    @Mock
+    private PrivateReplyRecordRepository privateReplyRecordRepository;
     @Mock
     private ValueOperations<String, String> valueOperations;
 
@@ -372,5 +376,66 @@ class ConversationServiceTest {
         assertNotNull(conv.getFirstRespondedAt());
         assertTrue(conv.getIsSlABreached());
         verify(conversationRepository).save(conv);
+    }
+
+    @Test
+    void sendPrivateReply_ShouldCreatePendingConversationAndSendEvent() {
+        // Arrange
+        com.omnichat.conversation.dto.PrivateReplyRequest req = new com.omnichat.conversation.dto.PrivateReplyRequest();
+        req.setCommentId("123");
+        req.setPageId("page1");
+        req.setChannelIdentityId("customer1");
+        req.setMessageText("Hello");
+        req.setCommentCreatedAt(LocalDateTime.now().minusDays(2));
+
+        when(privateReplyRecordRepository.existsById("123")).thenReturn(false);
+        when(conversationRepository.findByChannelIdentityIdAndStatus("customer1", Conversation.ConversationStatus.PENDING))
+                .thenReturn(Optional.empty());
+        when(conversationRepository.findByChannelIdentityIdAndStatus("customer1", Conversation.ConversationStatus.OPEN))
+                .thenReturn(Optional.empty());
+
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(messageRepository.save(any(Message.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        MessageDto result = conversationService.sendPrivateReply(req, "agent1");
+
+        // Then
+        assertNotNull(result);
+        assertEquals("Hello", result.getContentText());
+        verify(privateReplyRecordRepository).save(any(com.omnichat.conversation.entity.PrivateReplyRecord.class));
+        verify(conversationEventProducer).publishPrivateReplyRequested("123", "page1", result.getId(), "Hello");
+    }
+
+    @Test
+    void sendPrivateReply_WhenCommentIsOlderThan7Days_ShouldThrowException() {
+        // Arrange
+        com.omnichat.conversation.dto.PrivateReplyRequest req = new com.omnichat.conversation.dto.PrivateReplyRequest();
+        req.setCommentId("123");
+        req.setCommentCreatedAt(LocalDateTime.now().minusDays(8));
+
+        // Act & Then
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> conversationService.sendPrivateReply(req, "agent1")
+        );
+        assertEquals("Đã quá thời hạn 7 ngày cho phép của Facebook", ex.getMessage());
+    }
+
+    @Test
+    void sendPrivateReply_WhenAlreadyReplied_ShouldThrowException() {
+        // Arrange
+        com.omnichat.conversation.dto.PrivateReplyRequest req = new com.omnichat.conversation.dto.PrivateReplyRequest();
+        req.setCommentId("123");
+        req.setCommentCreatedAt(LocalDateTime.now().minusDays(2));
+
+        when(privateReplyRecordRepository.existsById("123")).thenReturn(true);
+
+        // Act & Then
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> conversationService.sendPrivateReply(req, "agent1")
+        );
+        assertEquals("Bình luận này đã được gửi tin riêng (1 per comment)", ex.getMessage());
     }
 }

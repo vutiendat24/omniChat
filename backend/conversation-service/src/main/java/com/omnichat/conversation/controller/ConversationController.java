@@ -89,6 +89,18 @@ public class ConversationController {
     }
 
     /**
+     * MOD-CONV-08: Gửi tin nhắn riêng tư từ bình luận
+     */
+    @PostMapping("/private-reply")
+    public ResponseEntity<MessageDto> sendPrivateReply(
+            @Valid @RequestBody com.omnichat.conversation.dto.PrivateReplyRequest request,
+            @RequestHeader(value = "X-Agent-Id", defaultValue = "0") String agentId) {
+
+        MessageDto messageDto = conversationService.sendPrivateReply(request, agentId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(messageDto);
+    }
+
+    /**
      * UC-303 - Manual conversation transfer / assignment.
      *
      * PATCH /api/v1/conversations/{id}/assign

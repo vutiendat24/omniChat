@@ -14,6 +14,7 @@ import com.omnichat.conversation.producer.ConversationEventProducer;
 import com.omnichat.conversation.repository.ConversationRepository;
 import com.omnichat.conversation.repository.ConversationHistoryRepository;
 import com.omnichat.conversation.repository.MessageRepository;
+import com.omnichat.conversation.repository.PrivateReplyRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -43,6 +44,7 @@ public class ConversationService {
     private final ConversationEventProducer conversationEventProducer;
     private final RedisTemplate<String, String> redisTemplate;
     private final com.omnichat.conversation.repository.TagRepository tagRepository;
+    private final PrivateReplyRecordRepository privateReplyRecordRepository;
 
     /**
      * Task 3.2.2.1 - Upsert Conversation and Insert Message.
@@ -419,6 +421,70 @@ public class ConversationService {
                 extractExternalUserId(conversation.getChannelIdentityId()), conversation.getChannelConnectionId(),
                 request.getContentText());
 
+        return MessageDto.fromEntity(message);
+    }
+
+    /**
+     * MOD-CONV-08: Gửi tin nhắn riêng tư từ bình luận (Private Replies)
+     */
+    @Transactional
+    public MessageDto sendPrivateReply(com.omnichat.conversation.dto.PrivateReplyRequest request, String agentId) {
+        // 1. Check 7 days rule
+        if (request.getCommentCreatedAt() != null) {
+            if (request.getCommentCreatedAt().isBefore(LocalDateTime.now().minusDays(7))) {
+                throw new IllegalArgumentException("Đã quá thời hạn 7 ngày cho phép của Facebook");
+            }
+        }
+        
+        // 2. Check 1 per comment rule
+        if (privateReplyRecordRepository.existsById(request.getCommentId())) {
+            throw new IllegalArgumentException("Bình luận này đã được gửi tin riêng (1 per comment)");
+        }
+        
+        // 3. Find or create conversation with status PENDING
+        Conversation conversation = conversationRepository
+                .findByChannelIdentityIdAndStatus(request.getChannelIdentityId(), Conversation.ConversationStatus.PENDING)
+                .or(() -> conversationRepository.findByChannelIdentityIdAndStatus(request.getChannelIdentityId(), Conversation.ConversationStatus.OPEN))
+                .orElseGet(() -> {
+                    Conversation newConv = Conversation.builder()
+                            .id(UUID.randomUUID().toString())
+                            .channelIdentityId(request.getChannelIdentityId())
+                            .channelConnectionId(0L) // Default or get from request if provided
+                            .status(Conversation.ConversationStatus.PENDING) // Pending reply
+                            .lastActivityAt(LocalDateTime.now())
+                            .build();
+                    log.info("Created new pending conversation {} for private reply", newConv.getId());
+                    return conversationRepository.save(newConv);
+                });
+                
+        // 4. Save Message
+        Message message = Message.builder()
+                .id(UUID.randomUUID().toString())
+                .conversationId(conversation.getId())
+                .senderType(Message.SenderType.AGENT)
+                .senderId(agentId)
+                .contentText(request.getMessageText())
+                .status(Message.MessageStatus.SENT)
+                .sentAt(LocalDateTime.now())
+                .build();
+        messageRepository.save(message);
+        
+        // 5. Save Record
+        com.omnichat.conversation.entity.PrivateReplyRecord record = com.omnichat.conversation.entity.PrivateReplyRecord.builder()
+                .commentId(request.getCommentId())
+                .pageId(request.getPageId())
+                .conversationId(conversation.getId())
+                .messageId(message.getId())
+                .agentId(agentId)
+                .status(com.omnichat.conversation.entity.PrivateReplyRecord.ReplyStatus.PENDING)
+                .build();
+        privateReplyRecordRepository.save(record);
+        
+        // 6. Publish Event
+        conversationEventProducer.publishPrivateReplyRequested(
+            request.getCommentId(), request.getPageId(), message.getId(), request.getMessageText()
+        );
+        
         return MessageDto.fromEntity(message);
     }
 

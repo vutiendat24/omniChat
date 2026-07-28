@@ -60,6 +60,26 @@ public class ConversationEventProducer {
                 });
     }
 
+    public void publishPrivateReplyRequested(String commentId, String pageId, String messageId, String messageText) {
+        Map<String, Object> event = Map.of(
+                "eventType", "conversation.private.reply.requested",
+                "commentId", commentId,
+                "pageId", pageId,
+                "messageId", messageId,
+                "messageText", messageText,
+                "timestamp", LocalDateTime.now().toString()
+        );
+
+        kafkaTemplate.send(TOPIC, commentId, event)
+                .whenComplete((result, ex) -> {
+                    if (ex == null) {
+                        log.info("Published private reply requested event for commentId={}", commentId);
+                    } else {
+                        log.error("Failed to publish private reply requested event for commentId={}", commentId, ex);
+                    }
+                });
+    }
+
     /**
      * Task 3.4.1.1 - Publish ConversationUpdated event after route assignment.
      *
