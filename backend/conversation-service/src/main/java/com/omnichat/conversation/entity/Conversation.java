@@ -56,6 +56,15 @@ public class Conversation {
     @Builder.Default
     private Boolean isSlABreached = false;
 
+    @Column(name = "sla_due_at")
+    private LocalDateTime slaDueAt;
+
+    @Column(name = "sla_paused_at")
+    private LocalDateTime slaPausedAt;
+
+    @Column(name = "first_responded_at")
+    private LocalDateTime firstRespondedAt;
+
     @Version
     private Long version;
 

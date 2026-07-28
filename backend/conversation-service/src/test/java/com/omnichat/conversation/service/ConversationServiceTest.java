@@ -2,13 +2,17 @@ package com.omnichat.conversation.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.omnichat.conversation.dto.ConversationDto;
+import com.omnichat.conversation.dto.PaginatedResponse;
+import com.omnichat.conversation.dto.TransferRequest;
+import com.omnichat.conversation.dto.UpdateStatusRequest;
+import com.omnichat.conversation.dto.SendMessageRequest;
 import com.omnichat.conversation.entity.Conversation;
+import com.omnichat.conversation.entity.ConversationHistory;
 import com.omnichat.conversation.entity.Message;
 import com.omnichat.conversation.producer.ConversationEventProducer;
-import com.omnichat.conversation.repository.ConversationRepository;
-import com.omnichat.conversation.entity.Conversation;
-import com.omnichat.conversation.entity.Message;
 import com.omnichat.conversation.repository.ConversationHistoryRepository;
+import com.omnichat.conversation.repository.ConversationRepository;
 import com.omnichat.conversation.repository.MessageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,13 +21,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import java.util.List;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -338,5 +346,31 @@ class ConversationServiceTest {
                 () -> conversationService.updateConversationTags("conv-1", 10L, req)
         );
         assertEquals("Cannot add more than 10 tags to a conversation", ex.getMessage());
+    }
+
+    @Test
+    void sendAgentMessage_ShouldSetFirstRespondedAtAndCheckSLA() {
+        // Arrange
+        Conversation conv = new Conversation();
+        conv.setId("conv-1");
+        conv.setStatus(Conversation.ConversationStatus.OPEN);
+        conv.setSlaDueAt(LocalDateTime.now().minusMinutes(5));
+        conv.setIsSlABreached(false);
+        conv.setFirstRespondedAt(null);
+
+        when(conversationRepository.findById("conv-1")).thenReturn(Optional.of(conv));
+
+        SendMessageRequest req = new SendMessageRequest();
+        req.setContentText("Hello");
+
+        when(messageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        conversationService.sendAgentMessage("conv-1", req, "100");
+
+        // Then
+        assertNotNull(conv.getFirstRespondedAt());
+        assertTrue(conv.getIsSlABreached());
+        verify(conversationRepository).save(conv);
     }
 }

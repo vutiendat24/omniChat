@@ -92,6 +92,7 @@ public class ConversationService {
                     .channelConnectionId(Long.parseLong(recipientId.length() > 18 ? "0" : recipientId.isEmpty() ? "0" : recipientId))
                     .status(Conversation.ConversationStatus.OPEN)
                     .lastActivityAt(LocalDateTime.now())
+                    .slaDueAt(LocalDateTime.now().plusMinutes(15))
                     .build();
             conversation = conversationRepository.save(conversation);
             log.info("Created new conversation: {}", conversation.getId());
@@ -400,8 +401,16 @@ public class ConversationService {
         messageRepository.save(message);
         log.info("Agent {} sent message {} in conversation {}", agentId, message.getId(), conversationId);
 
-        // 5. Update conversation last_activity_at
+        // 5. Update conversation last_activity_at and SLA
         conversation.setLastActivityAt(LocalDateTime.now());
+        
+        if (conversation.getFirstRespondedAt() == null) {
+            conversation.setFirstRespondedAt(LocalDateTime.now());
+            if (conversation.getSlaDueAt() != null && LocalDateTime.now().isAfter(conversation.getSlaDueAt())) {
+                conversation.setIsSlABreached(true);
+            }
+        }
+        
         conversationRepository.save(conversation);
 
         // 6. Publish event to Kafka for integration-service to deliver to external channel
@@ -444,6 +453,7 @@ public class ConversationService {
 
         // Update conversation: UNASSIGNED → OPEN, assign agent
         Conversation.ConversationStatus oldStatus = conversation.getStatus();
+        updateSlaOnStatusChange(conversation, Conversation.ConversationStatus.OPEN);
         conversation.setStatus(Conversation.ConversationStatus.OPEN);
         conversation.setAssignedAgentId(agentId);
         conversation.setLastActivityAt(LocalDateTime.now());
@@ -515,10 +525,12 @@ public class ConversationService {
         }
 
         // 5. Update conversation: assign to new agent
+        Conversation.ConversationStatus oldStatus = conversation.getStatus();
         conversation.setAssignedAgentId(newAgentId);
 
         // If unassigned → OPEN (manual assignment by Supervisor/Admin)
-        if (conversation.getAssignedAgentId() == null) {
+        if (oldAgentId == null) {
+            updateSlaOnStatusChange(conversation, Conversation.ConversationStatus.OPEN);
             conversation.setStatus(Conversation.ConversationStatus.OPEN);
         }
 
@@ -587,6 +599,7 @@ public class ConversationService {
         }
 
         // 4. Thực thi cập nhật
+        updateSlaOnStatusChange(conversation, newStatus);
         conversation.setStatus(newStatus);
         if (newStatus == Conversation.ConversationStatus.RESOLVED) {
             conversation.setClosedAt(LocalDateTime.now());
@@ -640,6 +653,25 @@ public class ConversationService {
             return channelIdentityId;
         }
         return channelIdentityId.substring(separatorIndex + 1);
+    }
+
+    private void updateSlaOnStatusChange(Conversation conversation, Conversation.ConversationStatus newStatus) {
+        if (newStatus == Conversation.ConversationStatus.OPEN) {
+            if (conversation.getSlaDueAt() == null) {
+                // First time opened -> start SLA 15 mins
+                conversation.setSlaDueAt(LocalDateTime.now().plusMinutes(15));
+            } else if (conversation.getSlaPausedAt() != null) {
+                // Resume SLA
+                long pausedMinutes = java.time.Duration.between(conversation.getSlaPausedAt(), LocalDateTime.now()).toMinutes();
+                conversation.setSlaDueAt(conversation.getSlaDueAt().plusMinutes(pausedMinutes));
+                conversation.setSlaPausedAt(null);
+            }
+        } else if (newStatus == Conversation.ConversationStatus.PENDING) {
+            if (conversation.getSlaPausedAt() == null && conversation.getFirstRespondedAt() == null) {
+                // Pause only if FRT is not yet met
+                conversation.setSlaPausedAt(LocalDateTime.now());
+            }
+        }
     }
 
     private Conversation findActiveConversation(String channelIdentityId) {
