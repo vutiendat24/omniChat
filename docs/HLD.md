@@ -151,7 +151,7 @@ graph TD
 | M07 — Conversation & Inbox | `conversation-service` | M03, M05, M06 | ⏳ Chờ |
 | M08 — Spam Filter & Moderation | `moderation-service` | M02 | ⏳ Chờ |
 | M09 — Routing & Assignment | `routing-service` | M01, M07 | ⏳ Chờ |
-| M10 — Realtime Delivery | `realtime-service` | M07, M09 | 🔄 MOD-REAL-01, MOD-REAL-02 done |
+| M10 — Realtime Delivery | `websocket-service` | M07, M09 | ✅ M10 completed (MOD-REAL-01 to 05) |
 | M11 — Analytics & Reporting | `analytics-service` | M07, M02 | ⏳ Chờ |
 | M12 — Notification | `notification-service` | M07, M10 | ⏳ Chờ |
 

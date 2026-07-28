@@ -7,9 +7,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SetOperations;
-import org.springframework.data.redis.core.ValueOperations;
-
-import java.util.Set;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -26,6 +24,9 @@ class WebSocketSessionManagerTest {
 
     @Mock
     private SetOperations<String, String> setOperations;
+
+    @Mock
+    private SimpUserRegistry simpUserRegistry;
 
     @InjectMocks
     private WebSocketSessionManager sessionManager;
@@ -44,25 +45,25 @@ class WebSocketSessionManagerTest {
         sessionManager.registerSession(agentId, sessionId);
 
         verify(setOperations, times(1)).add("ws:sessions:agent:" + agentId, sessionId);
-        verify(setOperations, times(1)).add("ws:sessions:active", agentId);
+        // Verify TTL is set
+        verify(redisTemplate, times(1)).expire(eq("ws:sessions:agent:" + agentId), any());
     }
 
     @Test
-    void testRemoveSession_WhenMultipleSessionsExist_ShouldRemoveOneSessionAndKeepAgentActive() {
+    void testRemoveSession_WhenMultipleSessionsExist_ShouldNotPublishOfflineEvent() {
         String agentId = "agent-1";
         String sessionId = "session-1";
 
-        when(setOperations.size("ws:sessions:agent:" + agentId)).thenReturn(1L); // Before removing, there are 2 sessions (size returns 1 after remove? wait, we mock size to return > 0)
+        when(setOperations.size("ws:sessions:agent:" + agentId)).thenReturn(1L);
 
         sessionManager.removeSession(agentId, sessionId);
 
         verify(setOperations, times(1)).remove("ws:sessions:agent:" + agentId, sessionId);
-        // Should not remove from active if size > 0
-        verify(setOperations, never()).remove("ws:sessions:active", agentId);
+        verify(kafkaTemplate, never()).send(eq("agent.presence.events"), eq(agentId), any());
     }
 
     @Test
-    void testRemoveSession_WhenLastSession_ShouldRemoveFromActive() {
+    void testRemoveSession_WhenLastSession_ShouldPublishOfflineEvent() {
         String agentId = "agent-1";
         String sessionId = "session-1";
 
@@ -71,6 +72,19 @@ class WebSocketSessionManagerTest {
         sessionManager.removeSession(agentId, sessionId);
 
         verify(setOperations, times(1)).remove("ws:sessions:agent:" + agentId, sessionId);
-        verify(setOperations, times(1)).remove("ws:sessions:active", agentId);
+        verify(kafkaTemplate, times(1)).send(eq("agent.presence.events"), eq(agentId), any());
+    }
+
+    @Test
+    void testRefreshSessionTtls_ShouldUpdateTtlForConnectedUsers() {
+        org.springframework.messaging.simp.user.SimpUser mockUser = mock(org.springframework.messaging.simp.user.SimpUser.class);
+        when(mockUser.getName()).thenReturn("agent-1");
+        when(simpUserRegistry.getUsers()).thenReturn(java.util.Set.of(mockUser));
+        when(redisTemplate.hasKey("ws:sessions:agent:agent-1")).thenReturn(true);
+
+        sessionManager.refreshSessionTtls();
+
+        verify(redisTemplate, times(1)).expire(eq("ws:sessions:agent:agent-1"), eq(java.time.Duration.ofMinutes(3)));
     }
 }
+
