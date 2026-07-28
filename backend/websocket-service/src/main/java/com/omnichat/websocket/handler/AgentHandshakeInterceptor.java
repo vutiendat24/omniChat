@@ -1,5 +1,6 @@
 package com.omnichat.websocket.handler;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -27,9 +28,13 @@ import java.util.Map;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class AgentHandshakeInterceptor implements HandshakeInterceptor {
 
     public static final String AGENT_ID_ATTR = "agentId";
+
+    private final com.omnichat.websocket.security.JwtValidator jwtValidator;
+    private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
     @Override
     public boolean beforeHandshake(
@@ -38,29 +43,53 @@ public class AgentHandshakeInterceptor implements HandshakeInterceptor {
             WebSocketHandler wsHandler,
             Map<String, Object> attributes) {
 
-        String agentId = null;
+        String token = null;
 
-        // 1. Try query parameter
+        // 1. Try query parameter ?token=...
         if (request instanceof ServletServerHttpRequest servletRequest) {
-            agentId = servletRequest.getServletRequest().getParameter("agentId");
-        }
-
-        // 2. Fallback: try header
-        if (agentId == null || agentId.isBlank()) {
-            var headerValues = request.getHeaders().get("X-Agent-Id");
-            if (headerValues != null && !headerValues.isEmpty()) {
-                agentId = headerValues.get(0);
+            token = servletRequest.getServletRequest().getParameter("token");
+            // Fallback for dev testing if they still use agentId
+            if (token == null || token.isBlank()) {
+                String devAgentId = servletRequest.getServletRequest().getParameter("agentId");
+                if (devAgentId != null && !devAgentId.isBlank()) {
+                    attributes.put(AGENT_ID_ATTR, devAgentId);
+                    log.info("WebSocket handshake: DEV mode bypass with agentId={}", devAgentId);
+                    return true;
+                }
             }
         }
 
-        if (agentId != null && !agentId.isBlank()) {
-            attributes.put(AGENT_ID_ATTR, agentId);
-            log.info("WebSocket handshake: agentId={} extracted from request", agentId);
-            return true;
+        // 2. Fallback: try Authorization header
+        if (token == null || token.isBlank()) {
+            var authHeaders = request.getHeaders().get("Authorization");
+            if (authHeaders != null && !authHeaders.isEmpty()) {
+                String bearer = authHeaders.get(0);
+                if (bearer != null && bearer.startsWith("Bearer ")) {
+                    token = bearer.substring(7);
+                }
+            }
         }
 
-        log.warn("WebSocket handshake rejected: no agentId provided");
-        return false; // Reject connection without agentId
+        if (token != null && !token.isBlank()) {
+            // Check Redis blacklist
+            Boolean isBlacklisted = redisTemplate.hasKey("blacklist:" + token);
+            if (Boolean.TRUE.equals(isBlacklisted)) {
+                log.warn("WebSocket handshake rejected: Token is blacklisted");
+                response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+                return false;
+            }
+
+            String userId = jwtValidator.validateTokenAndGetUserId(token);
+            if (userId != null) {
+                attributes.put(AGENT_ID_ATTR, userId);
+                log.info("WebSocket handshake: agentId={} extracted from valid JWT", userId);
+                return true;
+            }
+        }
+
+        log.warn("WebSocket handshake rejected: no valid token provided");
+        response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        return false; // Reject connection
     }
 
     @Override

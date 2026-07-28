@@ -78,7 +78,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 
 ## 12. M10 — Realtime Delivery
 *(Phụ thuộc: M07, M09)*
-- [ ] MOD-REAL-01: Quản lý kết nối WebSocket (Connection Management) - [REQUIREMENTS](M10-realtime-delivery/REQUIREMENTS-realtime-delivery.md)
+- [x] MOD-REAL-01: Quản lý kết nối WebSocket (Connection Management) - [REQUIREMENTS](M10-realtime-delivery/REQUIREMENTS-realtime-delivery.md)
 - [ ] MOD-REAL-02: Định tuyến và Đẩy sự kiện cá nhân (Targeted Event Push) - [REQUIREMENTS](M10-realtime-delivery/REQUIREMENTS-realtime-delivery.md)
 - [ ] MOD-REAL-03: Phát sóng dữ liệu nhóm (Group/Room Broadcast) - [REQUIREMENTS](M10-realtime-delivery/REQUIREMENTS-realtime-delivery.md)
 - [ ] MOD-REAL-04: Multi-instance Pub/Sub (Redis Pub/Sub Sync) - [REQUIREMENTS](M10-realtime-delivery/REQUIREMENTS-realtime-delivery.md)

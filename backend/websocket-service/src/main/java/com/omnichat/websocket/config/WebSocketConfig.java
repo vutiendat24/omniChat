@@ -35,7 +35,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         // Enable simple broker for /topic (broadcast) and /queue (point-to-point)
-        config.enableSimpleBroker("/topic", "/queue");
+        org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler taskScheduler = new org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler();
+        taskScheduler.setPoolSize(1);
+        taskScheduler.setThreadNamePrefix("ws-heartbeat-thread-");
+        taskScheduler.initialize();
+
+        config.enableSimpleBroker("/topic", "/queue")
+              .setHeartbeatValue(new long[]{60000, 60000}) // 60 seconds heartbeat
+              .setTaskScheduler(taskScheduler);
 
         // Prefix for client-to-server messages (e.g., /app/send)
         config.setApplicationDestinationPrefixes("/app");

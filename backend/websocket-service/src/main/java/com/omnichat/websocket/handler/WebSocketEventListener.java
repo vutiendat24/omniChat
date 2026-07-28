@@ -59,7 +59,7 @@ public class WebSocketEventListener {
         String agentId = getAgentId(accessor);
 
         if (agentId != null) {
-            sessionManager.removeSession(agentId);
+            sessionManager.removeSession(agentId, sessionId);
             log.info("Agent {} disconnected from WebSocket (sessionId={})", agentId, sessionId);
         } else {
             log.debug("WebSocket disconnected with unknown agentId (sessionId={})", sessionId);

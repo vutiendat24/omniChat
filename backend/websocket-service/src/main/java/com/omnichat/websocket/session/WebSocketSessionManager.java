@@ -30,10 +30,12 @@ import java.util.Set;
 public class WebSocketSessionManager {
 
     private final RedisTemplate<String, String> redisTemplate;
+    private final org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate;
 
-    private static final String SESSION_KEY_PREFIX = "ws:session:agent:";
+    private static final String SESSION_KEY_PREFIX = "ws:sessions:agent:";
     private static final String ACTIVE_SESSIONS_KEY = "ws:sessions:active";
     private static final Duration SESSION_TTL = Duration.ofHours(24);
+    private static final String PRESENCE_TOPIC = "agent.presence.events";
 
     /**
      * Register a new WebSocket session for an agent.
@@ -45,10 +47,24 @@ public class WebSocketSessionManager {
     public void registerSession(String agentId, String sessionId) {
         String key = SESSION_KEY_PREFIX + agentId;
 
-        redisTemplate.opsForValue().set(key, sessionId, SESSION_TTL);
+        Long sizeBefore = redisTemplate.opsForSet().size(key);
+        boolean isFirstSession = (sizeBefore == null || sizeBefore == 0);
+
+        redisTemplate.opsForSet().add(key, sessionId);
+        redisTemplate.expire(key, SESSION_TTL);
         redisTemplate.opsForSet().add(ACTIVE_SESSIONS_KEY, agentId);
 
         log.info("Registered WS session: agentId={}, sessionId={}", agentId, sessionId);
+
+        if (isFirstSession) {
+            com.omnichat.websocket.event.AgentPresenceEvent event = com.omnichat.websocket.event.AgentPresenceEvent.builder()
+                    .agentId(agentId)
+                    .status(com.omnichat.websocket.event.AgentPresenceEvent.PresenceStatus.ONLINE)
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+            kafkaTemplate.send(PRESENCE_TOPIC, agentId, event);
+            log.info("Published ONLINE event for agentId={}", agentId);
+        }
     }
 
     /**
@@ -56,25 +72,39 @@ public class WebSocketSessionManager {
      * Called when STOMP DISCONNECT or session timeout (from WebSocketEventListener).
      *
      * @param agentId the agent whose session to remove
+     * @param sessionId the session to remove
      */
-    public void removeSession(String agentId) {
+    public void removeSession(String agentId, String sessionId) {
         String key = SESSION_KEY_PREFIX + agentId;
 
-        redisTemplate.delete(key);
-        redisTemplate.opsForSet().remove(ACTIVE_SESSIONS_KEY, agentId);
+        redisTemplate.opsForSet().remove(key, sessionId);
+        Long size = redisTemplate.opsForSet().size(key);
+        
+        if (size == null || size == 0) {
+            redisTemplate.opsForSet().remove(ACTIVE_SESSIONS_KEY, agentId);
+            log.info("Removed last WS session for agent: agentId={}", agentId);
 
-        log.info("Removed WS session: agentId={}", agentId);
+            com.omnichat.websocket.event.AgentPresenceEvent event = com.omnichat.websocket.event.AgentPresenceEvent.builder()
+                    .agentId(agentId)
+                    .status(com.omnichat.websocket.event.AgentPresenceEvent.PresenceStatus.OFFLINE)
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+            kafkaTemplate.send(PRESENCE_TOPIC, agentId, event);
+            log.info("Published OFFLINE event for agentId={}", agentId);
+        } else {
+            log.info("Removed WS session: agentId={}, sessionId={}. Remaining sessions: {}", agentId, sessionId, size);
+        }
     }
 
     /**
-     * Get the session ID for a connected agent.
+     * Get the session IDs for a connected agent.
      *
      * @param agentId the agent's ID
-     * @return the sessionId, or null if agent is not connected
+     * @return set of sessionIds, or empty if agent is not connected
      */
-    public String getSessionId(String agentId) {
+    public Set<String> getSessionIds(String agentId) {
         String key = SESSION_KEY_PREFIX + agentId;
-        return redisTemplate.opsForValue().get(key);
+        return redisTemplate.opsForSet().members(key);
     }
 
     /**
