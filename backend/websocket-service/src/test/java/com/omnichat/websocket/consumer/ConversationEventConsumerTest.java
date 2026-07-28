@@ -30,6 +30,12 @@ class ConversationEventConsumerTest {
 
     @Mock
     private Acknowledgment acknowledgment;
+    
+    @Mock
+    private org.springframework.messaging.simp.user.SimpUserRegistry simpUserRegistry;
+    
+    @Mock
+    private com.omnichat.websocket.pubsub.RedisPubSubPublisher redisPubSubPublisher;
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -38,7 +44,7 @@ class ConversationEventConsumerTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        consumer = new ConversationEventConsumer(messagingTemplate, sessionManager, objectMapper);
+        consumer = new ConversationEventConsumer(messagingTemplate, sessionManager, objectMapper, simpUserRegistry, redisPubSubPublisher);
     }
 
     @Test
@@ -46,6 +52,11 @@ class ConversationEventConsumerTest {
         // Given
         String agentId = "123";
         when(sessionManager.isAgentConnected(agentId)).thenReturn(true);
+        when(sessionManager.getSessionIds(agentId)).thenReturn(java.util.Set.of("sess1"));
+        
+        org.springframework.messaging.simp.user.SimpUser mockUser = mock(org.springframework.messaging.simp.user.SimpUser.class);
+        when(simpUserRegistry.getUser(agentId)).thenReturn(mockUser);
+        when(mockUser.getSessions()).thenReturn(java.util.Set.of(mock(org.springframework.messaging.simp.user.SimpSession.class)));
 
         String jsonPayload = """
                 {
@@ -101,6 +112,11 @@ class ConversationEventConsumerTest {
         // Given
         String agentId = "456";
         when(sessionManager.isAgentConnected(agentId)).thenReturn(true);
+        when(sessionManager.getSessionIds(agentId)).thenReturn(java.util.Set.of("sess1"));
+        
+        org.springframework.messaging.simp.user.SimpUser mockUser = mock(org.springframework.messaging.simp.user.SimpUser.class);
+        when(simpUserRegistry.getUser(agentId)).thenReturn(mockUser);
+        when(mockUser.getSessions()).thenReturn(java.util.Set.of(mock(org.springframework.messaging.simp.user.SimpSession.class)));
 
         String jsonPayload = """
                 {
@@ -153,5 +169,43 @@ class ConversationEventConsumerTest {
 
         Map<String, Object> sentPayload = payloadCaptor.getValue();
         assertEquals("NEW_MESSAGE_UNASSIGNED", sentPayload.get("type"));
+    }
+
+    @Test
+    void testConsumeMessageReceived_WhenAgentConnectedOnOtherNode_ShouldPublishToRedis() throws Exception {
+        // Given
+        String agentId = "789";
+        when(sessionManager.isAgentConnected(agentId)).thenReturn(true);
+        // Agent is connected globally with 1 session
+        when(sessionManager.getSessionIds(agentId)).thenReturn(java.util.Set.of("sess1"));
+        
+        // But NOT connected on THIS node
+        when(simpUserRegistry.getUser(agentId)).thenReturn(null);
+
+        String jsonPayload = """
+                {
+                    "eventType": "conversation.message.received",
+                    "conversationId": "conv-2",
+                    "assignedAgentId": 789,
+                    "conversationStatus": "OPEN"
+                }
+                """;
+
+        // When
+        consumer.consumeConversationEvent(jsonPayload, acknowledgment);
+
+        // Then
+        verify(messagingTemplate, never()).convertAndSendToUser(anyString(), anyString(), any());
+        
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(redisPubSubPublisher, times(1)).publish(
+                eq(agentId),
+                eq("/queue/conversations"),
+                payloadCaptor.capture()
+        );
+        
+        Map<String, Object> sentPayload = payloadCaptor.getValue();
+        assertEquals("NEW_MESSAGE", sentPayload.get("type"));
+        verify(acknowledgment, times(1)).acknowledge();
     }
 }

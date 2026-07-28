@@ -43,6 +43,8 @@ public class ConversationEventConsumer {
     private final SimpMessagingTemplate messagingTemplate;
     private final WebSocketSessionManager sessionManager;
     private final ObjectMapper objectMapper;
+    private final org.springframework.messaging.simp.user.SimpUserRegistry simpUserRegistry;
+    private final com.omnichat.websocket.pubsub.RedisPubSubPublisher redisPubSubPublisher;
 
     @KafkaListener(topics = TOPIC, groupId = "${spring.application.name}-group")
     public void consumeConversationEvent(Object message, Acknowledgment acknowledgment) {
@@ -88,17 +90,14 @@ public class ConversationEventConsumer {
 
         // Check if agent is connected via WebSocket
         if (!sessionManager.isAgentConnected(agentId)) {
-            log.debug("Agent {} not connected via WS, skipping push for conversation {}", agentId, conversationId);
+            log.debug("Agent {} not connected globally via WS, skipping push for conversation {}", agentId, conversationId);
             return;
         }
 
         Map<String, Object> payload = buildPayload(event, "CONVERSATION_ASSIGNED");
+        pushTargetedEvent(agentId, "/queue/conversations", payload);
 
-        // Push to the specific agent's queue
-        String destination = "/queue/conversations";
-        messagingTemplate.convertAndSendToUser(agentId, destination, payload);
-
-        log.info("Pushed conversation.updated to agent {} via WS: conversationId={}", agentId, conversationId);
+        log.info("Processed conversation.updated for agent {}: conversationId={}", agentId, conversationId);
     }
 
     private void handleMessageReceived(JsonNode event) {
@@ -118,10 +117,10 @@ public class ConversationEventConsumer {
         if (targetAgentId != null && !targetAgentId.isBlank() && !"0".equals(targetAgentId)) {
             if (sessionManager.isAgentConnected(targetAgentId)) {
                 Map<String, Object> payload = buildPayload(event, "NEW_MESSAGE");
-                messagingTemplate.convertAndSendToUser(targetAgentId, "/queue/conversations", payload);
-                log.info("Pushed new message to agent {}: conversationId={}", targetAgentId, conversationId);
+                pushTargetedEvent(targetAgentId, "/queue/conversations", payload);
+                log.info("Processed new message for agent {}: conversationId={}", targetAgentId, conversationId);
             } else {
-                log.debug("Agent {} not connected, skipping push for new message in conversation {}", targetAgentId, conversationId);
+                log.debug("Agent {} not connected globally, skipping push for new message in conversation {}", targetAgentId, conversationId);
             }
         } else {
             // Fallback if no assignedAgentId provided but it is assigned (should not happen in real scenario if Kafka event is well-formed)
@@ -161,21 +160,39 @@ public class ConversationEventConsumer {
         // 1. Notify old agent: conversation removed from their queue
         if (!"0".equals(fromAgentId) && sessionManager.isAgentConnected(fromAgentId)) {
             Map<String, Object> outPayload = buildPayload(event, "CONVERSATION_TRANSFERRED_OUT");
-            messagingTemplate.convertAndSendToUser(fromAgentId, "/queue/conversations", outPayload);
-            log.info("Pushed CONVERSATION_TRANSFERRED_OUT to agent {} for conversation {}",
-                    fromAgentId, conversationId);
+            pushTargetedEvent(fromAgentId, "/queue/conversations", outPayload);
+            log.info("Processed CONVERSATION_TRANSFERRED_OUT for agent {}", fromAgentId);
         }
 
         // 2. Notify new agent: conversation added to their queue
         if (!"0".equals(toAgentId) && sessionManager.isAgentConnected(toAgentId)) {
             Map<String, Object> inPayload = buildPayload(event, "CONVERSATION_TRANSFERRED_IN");
-            messagingTemplate.convertAndSendToUser(toAgentId, "/queue/conversations", inPayload);
-            log.info("Pushed CONVERSATION_TRANSFERRED_IN to agent {} for conversation {}",
-                    toAgentId, conversationId);
+            pushTargetedEvent(toAgentId, "/queue/conversations", inPayload);
+            log.info("Processed CONVERSATION_TRANSFERRED_IN for agent {}", toAgentId);
         }
 
         log.info("Processed conversation.transferred: conversationId={}, from={}, to={}, reason={}",
                 conversationId, fromAgentId, toAgentId, reason);
+    }
+
+    /**
+     * Push targeted event via Local RAM or Redis Pub/Sub depending on session locations.
+     */
+    private void pushTargetedEvent(String agentId, String destination, Map<String, Object> payload) {
+        org.springframework.messaging.simp.user.SimpUser user = simpUserRegistry.getUser(agentId);
+        int localSessionCount = (user != null) ? user.getSessions().size() : 0;
+        int globalSessionCount = sessionManager.getSessionIds(agentId).size();
+
+        if (localSessionCount > 0) {
+            messagingTemplate.convertAndSendToUser(agentId, destination, payload);
+            log.info("Pushed event locally to agent {} (localSessions={})", agentId, localSessionCount);
+        }
+
+        if (localSessionCount < globalSessionCount) {
+            redisPubSubPublisher.publish(agentId, destination, payload);
+            log.info("Published event to Redis Pub/Sub for agent {} (globalSessions={}, localSessions={})", 
+                    agentId, globalSessionCount, localSessionCount);
+        }
     }
 
     /**
