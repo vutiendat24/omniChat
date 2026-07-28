@@ -64,7 +64,7 @@ File này tổng hợp tiến độ triển khai các module và chức năng th
 - [x] MOD-CONV-03: Lưu trữ & đồng bộ tin nhắn (Save & Sync Message) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [x] MOD-CONV-04: Lọc và tìm kiếm hội thoại (Filter & Search Inbox) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [x] MOD-CONV-05: Gắn thẻ hội thoại (Conversation Tagging) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
-- [ ] MOD-CONV-06: Quản lý mẫu tin nhắn nhanh (Quick Reply Templates) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
+- [x] MOD-CONV-06: Quản lý mẫu tin nhắn nhanh (Quick Reply Templates) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [ ] MOD-CONV-07: Theo dõi thời gian phản hồi (SLA Tracking) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 - [ ] MOD-CONV-08: Gửi tin nhắn riêng tư từ bình luận (Private Replies) - [REQUIREMENTS](M07-conversation-inbox/REQUIREMENTS-conversation-inbox.md)
 

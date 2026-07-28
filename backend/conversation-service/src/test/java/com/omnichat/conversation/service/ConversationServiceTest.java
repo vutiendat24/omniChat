@@ -50,6 +50,8 @@ class ConversationServiceTest {
     @Mock
     private RedisTemplate<String, String> redisTemplate;
     @Mock
+    private com.omnichat.conversation.repository.TagRepository tagRepository;
+    @Mock
     private ValueOperations<String, String> valueOperations;
 
     @InjectMocks
@@ -89,7 +91,7 @@ class ConversationServiceTest {
         });
 
         // Act
-        conversationService.processIncomingMessage(payload.toString());
+        conversationService.processIncomingMessage(payload);
 
         // Assert
         ArgumentCaptor<Conversation> convCaptor = ArgumentCaptor.forClass(Conversation.class);
@@ -138,7 +140,7 @@ class ConversationServiceTest {
         when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // Act
-        conversationService.processIncomingMessage(payload.toString());
+        conversationService.processIncomingMessage(payload);
 
         // Assert
         verify(conversationRepository).save(existingConv);
@@ -206,7 +208,7 @@ class ConversationServiceTest {
         when(messageRepository.existsById("FACEBOOK_msg_1")).thenReturn(true);
 
         // Act
-        conversationService.processIncomingMessage(payload.toString());
+        conversationService.processIncomingMessage(payload);
 
         // Then
         verify(conversationRepository, never()).save(any(Conversation.class));
@@ -230,7 +232,7 @@ class ConversationServiceTest {
         when(messageRepository.findById("FACEBOOK_msg_1")).thenReturn(Optional.of(msg));
 
         // Act
-        conversationService.processIncomingMessage(payload.toString());
+        conversationService.processIncomingMessage(payload);
 
         // Then
         verify(messageRepository).save(msg);
