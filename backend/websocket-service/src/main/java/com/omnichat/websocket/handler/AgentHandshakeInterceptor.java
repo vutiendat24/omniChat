@@ -82,7 +82,11 @@ public class AgentHandshakeInterceptor implements HandshakeInterceptor {
             String userId = jwtValidator.validateTokenAndGetUserId(token);
             if (userId != null) {
                 attributes.put(AGENT_ID_ATTR, userId);
-                log.info("WebSocket handshake: agentId={} extracted from valid JWT", userId);
+                String tenantId = jwtValidator.getTenantIdFromToken(token);
+                if (tenantId != null) {
+                    attributes.put("tenantId", tenantId);
+                }
+                log.info("WebSocket handshake: agentId={} (tenantId={}) extracted from valid JWT", userId, tenantId);
                 return true;
             }
         }

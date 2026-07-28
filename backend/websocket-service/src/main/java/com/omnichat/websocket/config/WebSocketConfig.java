@@ -32,6 +32,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final AgentHandshakeInterceptor agentHandshakeInterceptor;
     private final com.omnichat.websocket.handler.AgentHandshakeHandler agentHandshakeHandler;
+    private final com.omnichat.websocket.security.LivestreamSubscriptionInterceptor livestreamSubscriptionInterceptor;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -66,5 +67,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .addInterceptors(agentHandshakeInterceptor)
                 .setHandshakeHandler(agentHandshakeHandler)
                 .setAllowedOriginPatterns("*");
+    }
+
+    @Override
+    public void configureClientInboundChannel(org.springframework.messaging.simp.config.ChannelRegistration registration) {
+        registration.interceptors(livestreamSubscriptionInterceptor);
     }
 }

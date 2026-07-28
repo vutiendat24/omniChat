@@ -61,4 +61,18 @@ public class JwtValidator {
             return null;
         }
     }
+
+    public String getTenantIdFromToken(String token) {
+        if (this.publicKey == null) return null;
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(publicKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            return claims.get("tenantId", String.class);
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
+    }
 }
