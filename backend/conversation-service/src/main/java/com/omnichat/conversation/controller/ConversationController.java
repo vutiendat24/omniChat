@@ -60,6 +60,16 @@ public class ConversationController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/{id}/tags")
+    public ResponseEntity<Void> updateConversationTags(
+            @PathVariable String id,
+            @RequestHeader(value = "X-Tenant-Id", required = false, defaultValue = "1") Long tenantId,
+            @RequestBody com.omnichat.conversation.dto.ConversationTagRequest request) {
+        
+        conversationService.updateConversationTags(id, tenantId, request);
+        return ResponseEntity.ok().build();
+    }
+
     /**
      * Task 3.3.2.1 - POST /conversations/{id}/messages
      * Agent sends a new message into a conversation.

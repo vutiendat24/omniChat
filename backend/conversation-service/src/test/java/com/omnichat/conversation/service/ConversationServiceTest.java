@@ -283,4 +283,58 @@ class ConversationServiceTest {
         assertEquals(1, response.getData().size());
         assertEquals("conv-1", response.getData().get(0).getId());
     }
+
+    @Test
+    void updateConversationTags_WhenAddTagByName_ShouldCreateAndAddTag() {
+        // Arrange
+        Conversation conv = new Conversation();
+        conv.setId("conv-1");
+        
+        when(conversationRepository.findById("conv-1")).thenReturn(Optional.of(conv));
+        
+        com.omnichat.conversation.dto.ConversationTagRequest req = new com.omnichat.conversation.dto.ConversationTagRequest();
+        req.setTagName("NEW_TAG");
+        req.setAction("ADD");
+
+        com.omnichat.conversation.entity.Tag newTag = com.omnichat.conversation.entity.Tag.builder()
+                .id(1L).tenantId(10L).name("NEW_TAG").build();
+
+        when(tagRepository.findByTenantIdAndName(10L, "NEW_TAG")).thenReturn(Optional.empty());
+        when(tagRepository.save(any(com.omnichat.conversation.entity.Tag.class))).thenReturn(newTag);
+
+        // Act
+        conversationService.updateConversationTags("conv-1", 10L, req);
+
+        // Then
+        assertEquals(1, conv.getTags().size());
+        assertTrue(conv.getTags().contains(newTag));
+        verify(conversationRepository).save(conv);
+    }
+
+    @Test
+    void updateConversationTags_WhenExceedLimit_ShouldThrowException() {
+        // Arrange
+        Conversation conv = new Conversation();
+        conv.setId("conv-1");
+        for (int i = 0; i < 10; i++) {
+            conv.getTags().add(com.omnichat.conversation.entity.Tag.builder().id((long) i).build());
+        }
+
+        when(conversationRepository.findById("conv-1")).thenReturn(Optional.of(conv));
+        
+        com.omnichat.conversation.dto.ConversationTagRequest req = new com.omnichat.conversation.dto.ConversationTagRequest();
+        req.setTagId(99L);
+        req.setAction("ADD");
+
+        com.omnichat.conversation.entity.Tag newTag = com.omnichat.conversation.entity.Tag.builder()
+                .id(99L).tenantId(10L).name("EXTRA").build();
+        when(tagRepository.findById(99L)).thenReturn(Optional.of(newTag));
+
+        // Act & Then
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, 
+                () -> conversationService.updateConversationTags("conv-1", 10L, req)
+        );
+        assertEquals("Cannot add more than 10 tags to a conversation", ex.getMessage());
+    }
 }

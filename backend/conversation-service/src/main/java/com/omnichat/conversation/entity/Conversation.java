@@ -70,6 +70,13 @@ public class Conversation {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(name = "conversation_tags",
+            joinColumns = @JoinColumn(name = "conversation_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    @Builder.Default
+    private java.util.Set<Tag> tags = new java.util.HashSet<>();
+
     public enum ConversationStatus {
         OPEN, PENDING, RESOLVED, SPAM
     }

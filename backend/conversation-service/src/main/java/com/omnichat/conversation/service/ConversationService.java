@@ -42,6 +42,7 @@ public class ConversationService {
     private final ConversationHistoryRepository conversationHistoryRepository;
     private final ConversationEventProducer conversationEventProducer;
     private final RedisTemplate<String, String> redisTemplate;
+    private final com.omnichat.conversation.repository.TagRepository tagRepository;
 
     /**
      * Task 3.2.2.1 - Upsert Conversation and Insert Message.
@@ -298,6 +299,11 @@ public class ConversationService {
 
             if (channelId != null) {
                 predicates.add(cb.equal(root.get("channelConnectionId"), channelId));
+            }
+            
+            if (tagId != null) {
+                jakarta.persistence.criteria.Join<Conversation, com.omnichat.conversation.entity.Tag> tagsJoin = root.join("tags");
+                predicates.add(cb.equal(tagsJoin.get("id"), tagId));
             }
             
             if (searchKeyword != null && !searchKeyword.isBlank()) {
@@ -642,5 +648,47 @@ public class ConversationService {
                 .or(() -> conversationRepository.findByChannelIdentityIdAndStatus(
                         channelIdentityId, Conversation.ConversationStatus.OPEN))
                 .orElse(null);
+    }
+
+    @Transactional
+    public void updateConversationTags(String conversationId, Long tenantId, com.omnichat.conversation.dto.ConversationTagRequest request) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found"));
+        
+        com.omnichat.conversation.entity.Tag tag;
+        if (request.getTagId() != null) {
+            tag = tagRepository.findById(request.getTagId())
+                    .orElseThrow(() -> new IllegalArgumentException("Tag not found"));
+            if (!tag.getTenantId().equals(tenantId)) {
+                throw new IllegalArgumentException("Tag does not belong to this tenant");
+            }
+        } else if (request.getTagName() != null && !request.getTagName().isBlank()) {
+            tag = tagRepository.findByTenantIdAndName(tenantId, request.getTagName())
+                    .orElseGet(() -> {
+                        com.omnichat.conversation.entity.Tag newTag = com.omnichat.conversation.entity.Tag.builder()
+                                .tenantId(tenantId)
+                                .name(request.getTagName())
+                                .color("#000000")
+                                .build();
+                        return tagRepository.save(newTag);
+                    });
+        } else {
+            throw new IllegalArgumentException("Must provide tagId or tagName");
+        }
+
+        if ("ADD".equalsIgnoreCase(request.getAction())) {
+            if (conversation.getTags().size() >= 10) {
+                if (!conversation.getTags().contains(tag)) {
+                    throw new IllegalArgumentException("Cannot add more than 10 tags to a conversation");
+                }
+            }
+            conversation.getTags().add(tag);
+        } else if ("REMOVE".equalsIgnoreCase(request.getAction())) {
+            conversation.getTags().remove(tag);
+        } else {
+            throw new IllegalArgumentException("Invalid action: " + request.getAction());
+        }
+
+        conversationRepository.save(conversation);
     }
 }
