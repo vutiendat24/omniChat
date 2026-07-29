@@ -22,13 +22,13 @@ spring:
       name: admin
       password: admin_password # Sẽ thay đổi qua ENV trên production
 
-# Cấu hình mã hoá RSA
-encrypt:
-  keyStore:
-    location: classpath:/keystore.p12
-    password: secret
-    alias: config-server-key
-    secret: secret
+# Cấu hình mã hoá RSA (Tạm ẩn vì thiếu keystore.p12)
+# encrypt:
+#   keyStore:
+#     location: classpath:/keystore.p12
+#     password: secret
+#     alias: config-server-key
+#     secret: secret
 
 # Cấu hình Actuator & Spring Cloud Bus (Refresh)
 management:

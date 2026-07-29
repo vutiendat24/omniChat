@@ -1,11 +1,11 @@
 # ============================================================
 # Multi-stage Dockerfile for OmniChat Microservices
-# Build: JDK 21 (Maven) → Runtime: JRE 21 Alpine (~200MB)
+# Build: JDK 17 (Maven) → Runtime: JRE 17 Alpine (~200MB)
 # Usage: docker build --build-arg SERVICE_NAME=conversation-service .
 # ============================================================
 
 # ---- Stage 1: Build ----
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM eclipse-temurin:17-jdk-alpine AS builder
 
 WORKDIR /workspace
 
@@ -21,6 +21,11 @@ COPY pom.xml ./
 RUN dos2unix mvnw && chmod +x mvnw
 
 # Copy all module POMs for dependency resolution
+COPY auth-service/pom.xml auth-service/pom.xml
+COPY config-server/pom.xml config-server/pom.xml
+COPY discovery-server/pom.xml discovery-server/pom.xml
+COPY dummy-service/pom.xml dummy-service/pom.xml
+COPY tenant-service/pom.xml tenant-service/pom.xml
 COPY conversation-service/pom.xml conversation-service/pom.xml
 COPY routing-service/pom.xml routing-service/pom.xml
 COPY customer-service/pom.xml customer-service/pom.xml
@@ -42,7 +47,7 @@ RUN ./mvnw package -pl ${SERVICE_NAME} -am -DskipTests -B -q \
     && mv ${SERVICE_NAME}/target/*.jar /app.jar
 
 # ---- Stage 2: Runtime (lightweight JRE) ----
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:17-jre-alpine AS runtime
 
 # Security: run as non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

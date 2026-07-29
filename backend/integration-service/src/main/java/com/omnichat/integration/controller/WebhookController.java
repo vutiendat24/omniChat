@@ -11,7 +11,7 @@ import com.omnichat.integration.dto.RawWebhookEvent;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/webhook")
+@RequestMapping("/webhook/raw")
 public class WebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookController.class);

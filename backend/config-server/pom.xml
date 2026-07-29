@@ -34,10 +34,10 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Spring Cloud Bus AMQP (RabbitMQ) for broadcasting config changes -->
+        <!-- Spring Cloud Bus Kafka for broadcasting config changes -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-bus-amqp</artifactId>
+            <artifactId>spring-cloud-starter-bus-kafka</artifactId>
         </dependency>
 
         <!-- Tests -->

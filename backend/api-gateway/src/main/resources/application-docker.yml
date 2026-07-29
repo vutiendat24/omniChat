@@ -2,6 +2,12 @@
 server:
   port: 8080
 
+spring:
+  data:
+    redis:
+      host: redis
+      port: 6379
+
 # Route targets resolve via Docker DNS
 omnichat:
   services:

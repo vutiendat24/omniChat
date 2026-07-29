@@ -9,7 +9,7 @@ Môi trường local development sử dụng Docker Compose cho hệ thống Omn
 ## Cấu trúc dịch vụ và Port
 | Service  | Image | Port Host | Port Container | Mô tả |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
-| MySQL 8.4 | `mysql:8.4` | `3306` | `3306` | Database chính, charset utf8mb4 |
+| MySQL 8.4 | `mysql:8.4` | `3307` | `3306` | Database chính, charset utf8mb4 |
 | Redis 7 | `redis:7-alpine` | `6379` | `6379` | Cache & Data Storage tạm thời |
 | Kafka | `bitnami/kafka:3.7` | `9092` | `9092` / `29092` | Event Streaming (KRaft mode) |
 | Kafka UI | `provectuslabs/kafka-ui`| `8081` | `8080` | Web UI quản lý Kafka |

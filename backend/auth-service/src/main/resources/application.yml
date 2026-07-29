@@ -9,8 +9,8 @@ spring:
     import: "optional:configserver:http://localhost:8888/"
 
   datasource:
-    url: jdbc:mysql://localhost:3306/omnichat_auth?createDatabaseIfNotExist=true&useSSL=false
-    username: root
+    url: jdbc:mysql://localhost:3307/omnichat_auth?createDatabaseIfNotExist=true&useSSL=false
+    username: ${MYSQL_USERNAME:root}
     password: password # Replace in production or move to Config Server
     driver-class-name: com.mysql.cj.jdbc.Driver
 
@@ -40,8 +40,8 @@ spring:
 jwt:
   # The private key must be base64 encoded and wrapped in -----BEGIN PRIVATE KEY----- ...
   # Will be fetched from Config Server ideally
-  private-key: "changeme"
-  public-key: "changeme"
+  private-key: "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCh6xVjZVR0b5EG9eYP96a43Cp2g4Nuw1ecfIRQMZidbjafzdpvurHb0sAbWTFciqA+s27n3MvhZzEGh56U1WETeq3y2qu6jEPTiNtlX0Mnz2LA9eS3liV1aYnnSrGk8LmFKkoGtB60bh67mYeB1XORMI1We9LbtyZUXuwtBlo3CGWRARnqDXjKrJEwwyAeYqdLSi1yfs0smenbjezZBOtjSZMJH2dQLxQiy3PV43/Ogmvb2XYWKPzsQ+Oo+P9zYC0ungsa6HNI7MyKgF0ukLulDAt4FQDVhNfJiuedlE7ANqaFfXoJ9pDNlsE0/jL3alh+TvTqUGw6Uxr/QFV9AQ7LAgMBAAECggEAEPLWjkzxBi8Xcy8SIeG+ZeNF3pntjA6OgSbXgr1uSCxdM2UM1F0qeOQaj8JKVHF+TJHjrgmCndl7XD+d7d5YBv30b1NMXn6IKwBMVtQd53Dh2WjjxAPHb/7YHInJBobcJIBEt2brP9+2/9QWRxTcv/nhEYhsjesh6/rzpdLgZpojm5ypTb+tOQVexZsddq11K+2LKge7wpORgYlOVidT1bAozW6W1ugKBmAF5tgXc+ejyl0hAWUQfbHDyNKezwZFSJ6SHVZpmxceTjEKbdP8D/cu/v3gWU2KeTZLMW1gVxPg5/95ODhqqwLszjOsIRRuE79vF+iPjrP/yRtmGkebwQKBgQC6BmLld/PKn3V0dwof+m6SzIwzG67VuEXCugIj4QBqMet6n/V6SDub9F/mVjQkMmYNzSx5hzKgcAXD6XXaVBZDj9Bn1pShqU4rRI+LcOxFJs/wXRc/SdmSAkWoTvfvk7Gyfw3CIyqHbXHqLrj0iONU+d/1gTptfYs8WCDWzpL3aQKBgQDe002QdMAn8rGr6ipVAkInjNJQCWG82prBSXIdefh9H+cuvfj0cFVbSCrocnmI1s7oNSdDXjkD3VWBICZ2HXUKWiTb/kyxeWEUA4oY/D8Jhuuv/zG6HNbeOxOGXtwxoReJv6ru/nhWRYOiSivH4eSjYUxo+D/1zwIkUjfbBH7iEwKBgAufoIhUEXCkvBMV6RUMceJMU6pR3X/PLtS3CLEzOvJnwh38ZrtITik1gNSEqGdmmsfb/R5u2zP5K/MM4GdO/8Ei+FO0rb7YNGExvIJrAOhlP3L2biBvPeAIsk+M96MJqH3NwI9T4TFrHkYSu03US9ggcOUHOR5kTNHtc8fYSoiZAoGBAMBZDSK+9cVGRkMN378ENREpCb+Xaax51I83lG+Hg46XhJwf15FCixxCHvALKYiLTY67m4oXAwaoAJB3rVvWr9rg1+KkEZY+HiQFridFUDEsK7YAh++Nx5mMy5z5tACPe98n+ilWt5BZb3kfp81i3Vh/vFL8wVGygbnS026X4ePLAoGBALZCCXfZdwOoC4ELkWzBdiDwJijzi3OPTyeNdLqeuJEbmTXZuULTCfI/ofwZdL4zSxm0j0zdmhvoLXLMDYVsNmIeCOXoXyuKE9u6ta0oAVJEJKhwThQaeKSbSR2tONcX2XsrTLIJlE8E6SmXUIknATlV9ARkhjFEBmHciKqWU4j/"
+  public-key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoesVY2VUdG+RBvXmD/emuNwqdoODbsNXnHyEUDGYnW42n83ab7qx29LAG1kxXIqgPrNu59zL4WcxBoeelNVhE3qt8tqruoxD04jbZV9DJ89iwPXkt5YldWmJ50qxpPC5hSpKBrQetG4eu5mHgdVzkTCNVnvS27cmVF7sLQZaNwhlkQEZ6g14yqyRMMMgHmKnS0otcn7NLJnp243s2QTrY0mTCR9nUC8UIstz1eN/zoJr29l2Fij87EPjqPj/c2AtLp4LGuhzSOzMioBdLpC7pQwLeBUA1YTXyYrnnZROwDamhX16CfaQzZbBNP4y92pYfk706lBsOlMa/0BVfQEOywIDAQAB"
   expiration-ms: 900000 # 15 minutes
   refresh-expiration-ms: 604800000 # 7 days
 
