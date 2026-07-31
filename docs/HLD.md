@@ -159,7 +159,7 @@ graph TD
 | M10 — Realtime Delivery | `websocket-service` | M07, M09 | ✅ M10 completed (MOD-REAL-01 to 05) |
 | M11 — Analytics & Reporting | `analytics-service` | M07, M02 | ⏳ Chờ |
 | M12 — Notification | `notification-service` | M07, M10 | ⏳ Chờ |
-| M13 — User Service | `user-service` | M00 | ✅ MOD-USR-01, MOD-USR-02 done |
+| M13 — User Service | `user-service` | M00 | ✅ MOD-USR-01, MOD-USR-02, MOD-USR-03 done |
 
 ---
 
@@ -241,6 +241,7 @@ graph TD
 |---|---|---|---|
 | MOD-USR-01 | Quản lý Hồ sơ cá nhân | Password hash, XSS protection, update publish event | Khóa tài khoản sau 5 lần sai mật khẩu |
 | MOD-USR-02 | Quản lý Thành viên Workspace | Role hierarchy check, Soft delete | Cấm tự xóa bản thân, cấm xóa Owner |
+| MOD-USR-03 | Quản lý Vai trò (Role) | Mức level của role mới tạo phải < level của Actor | Role hệ thống (is_system=true) không cho phép sửa/xóa; Tranh chấp tên Role qua Unique Constraint |
 
 **NFR M13:** Profile update < 200ms; Đảm bảo consistency với hệ thống qua Kafka.
 

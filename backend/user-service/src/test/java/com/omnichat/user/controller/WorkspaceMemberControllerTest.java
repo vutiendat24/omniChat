@@ -69,9 +69,9 @@ public class WorkspaceMemberControllerTest {
         jdbcTemplate.execute("DELETE FROM roles");
         jdbcTemplate.execute("DELETE FROM users");
 
-        ownerRole = roleRepository.save(Role.builder().name("Owner").level(100).build());
-        adminRole = roleRepository.save(Role.builder().name("Admin").level(80).build());
-        managerRole = roleRepository.save(Role.builder().name("Manager").level(60).build());
+        ownerRole = roleRepository.save(Role.builder().workspaceId(1L).name("Owner").level(100).isSystem(true).build());
+        adminRole = roleRepository.save(Role.builder().workspaceId(1L).name("Admin").level(80).isSystem(true).build());
+        managerRole = roleRepository.save(Role.builder().workspaceId(1L).name("Manager").level(60).isSystem(true).build());
 
         ownerUser = userRepository.save(User.builder().email("owner@omnichat.com").password("Pass@123").fullName("Owner").build());
         adminUser = userRepository.save(User.builder().email("admin@omnichat.com").password("Pass@123").fullName("Admin").build());
