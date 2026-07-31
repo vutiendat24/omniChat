@@ -1,22 +1,29 @@
 package com.omnichat.user.controller;
 
+import com.omnichat.user.domain.entity.Permission;
 import com.omnichat.user.domain.entity.Role;
 import com.omnichat.user.domain.entity.User;
 import com.omnichat.user.domain.entity.WorkspaceMember;
 import com.omnichat.user.dto.ErrorResponse;
+import com.omnichat.user.dto.RolePermissionReq;
 import com.omnichat.user.dto.RoleReq;
+import com.omnichat.user.repository.PermissionRepository;
 import com.omnichat.user.repository.RoleRepository;
 import com.omnichat.user.repository.UserRepository;
 import com.omnichat.user.repository.WorkspaceMemberRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/workspaces/{id}/roles")
@@ -26,6 +33,8 @@ public class RoleController {
     private final RoleRepository roleRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final UserRepository userRepository;
+    private final PermissionRepository permissionRepository;
+    private final StringRedisTemplate redisTemplate;
 
     @GetMapping
     public ResponseEntity<?> getRoles(@PathVariable("id") Long workspaceId, Authentication authentication) {
@@ -147,6 +156,57 @@ public class RoleController {
         }
 
         roleRepository.delete(role);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{roleId}/permissions")
+    public ResponseEntity<?> updateRolePermissions(@PathVariable("id") Long workspaceId,
+                                                   @PathVariable("roleId") Long roleId,
+                                                   @Valid @RequestBody RolePermissionReq req,
+                                                   Authentication authentication) {
+        String actorEmail = authentication.getName();
+        User actorUser = userRepository.findByEmail(actorEmail).orElse(null);
+        if (actorUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        WorkspaceMember actorMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, actorUser.getId()).orElse(null);
+        if (actorMember == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        Role targetRole = roleRepository.findById(roleId).orElse(null);
+        if (targetRole == null || !targetRole.getWorkspaceId().equals(workspaceId)) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Role không tồn tại"));
+        }
+
+        if (actorMember.getRole().getLevel() <= targetRole.getLevel() && !actorMember.getRole().getId().equals(targetRole.getId())) {
+            // Check level for modifying another role's permissions
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Không đủ quyền thay đổi Role này"));
+        }
+
+        List<Permission> newPermissions = permissionRepository.findAllById(req.getPermissionIds());
+
+        // Check if actor has all the permissions they are trying to assign
+        if (actorMember.getRole().getLevel() < 100) { // Assuming level 100 is Owner with all perms bypass
+            Set<Long> actorPermIds = actorMember.getRole().getPermissions().stream()
+                    .map(Permission::getId).collect(Collectors.toSet());
+            for (Permission p : newPermissions) {
+                if (!actorPermIds.contains(p.getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(new ErrorResponse("Bạn không thể cấp quyền mà mình không sở hữu"));
+                }
+            }
+        }
+
+        targetRole.setPermissions(new HashSet<>(newPermissions));
+        roleRepository.save(targetRole);
+
+        // Publish to Redis for AuthFilter
+        String cacheKey = "role_permissions:" + targetRole.getId();
+        String permNames = newPermissions.stream().map(Permission::getName).collect(Collectors.joining(","));
+        redisTemplate.opsForValue().set(cacheKey, permNames);
+
         return ResponseEntity.ok().build();
     }
 }
