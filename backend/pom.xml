@@ -39,6 +39,7 @@
         <module>tenant-service</module>
         <module>dummy-service</module>
         <module>notification-service</module>
+        <module>user-service</module>
     </modules>
 
     <dependencyManagement>

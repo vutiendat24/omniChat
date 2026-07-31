@@ -9,7 +9,7 @@
 
 ## 2. M13 - User Service
 *Phụ thuộc: M00*
-- [ ] MOD-USR-01: Quản lý Hồ sơ cá nhân (User Profile Management) 🔗 [Chi tiết](M13-user-service/REQUIREMENTS-user-service.md)
+- [x] MOD-USR-01: Quản lý Hồ sơ cá nhân (User Profile Management) 🔗 [Chi tiết](M13-user-service/REQUIREMENTS-user-service.md)
 - [ ] MOD-USR-02: Quản lý Thành viên Workspace (Workspace Member Management) 🔗 [Chi tiết](M13-user-service/REQUIREMENTS-user-service.md)
 - [ ] MOD-USR-03: Quản lý Vai trò (Role Management) 🔗 [Chi tiết](M13-user-service/REQUIREMENTS-user-service.md)
 - [ ] MOD-USR-04: Quản lý Phân quyền (Permission / RBAC Management) 🔗 [Chi tiết](M13-user-service/REQUIREMENTS-user-service.md)

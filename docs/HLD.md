@@ -33,6 +33,7 @@ Từ 13 module (M00–M12), hệ thống gom nhóm thành **11 Microservices** �
 | 9 | `realtime-service` | M10 | WebSocket management (heartbeat), targeted push, room broadcast, multi-instance Pub/Sub, presence sync | CPU profile khác biệt với logic service |
 | 10 | `analytics-service` | M11 | Dashboard realtime, báo cáo kênh/agent/SLA, export, so sánh phiên live | OLAP query nặng — tách riêng |
 | 11 | `notification-service` | M12 | In-app, email, push notification (hội thoại mới, SLA breach, assignment, live start) | Background push — tách khỏi luồng chính |
+| 12 | `user-service` | M13 | Quản lý User Profile, Role, Permission, Workspace Members, RBAC | Tách biệt domain quản lý người dùng khỏi xác thực |
 
 > **v2.1:** `moderation-service` tách riêng khỏi `conversation-service` để đảm bảo **Single Responsibility** và dễ nâng cấp engine spam.
 
@@ -73,6 +74,7 @@ graph TD
         RT("realtime-service M10")
         ANALYT("analytics-service M11")
         NOTI("notification-service M12")
+        USER("user-service M13")
     end
 
     DB_AUTH[("PostgreSQL Identity DB")]
@@ -84,6 +86,7 @@ graph TD
     DB_MOD[("PostgreSQL Moderation Rules DB")]
     DB_ANALYT[("ClickHouse / ES Analytics DB")]
     DB_NOTI[("PostgreSQL Notification Log DB")]
+    DB_USER[("PostgreSQL User DB")]
 
     GW --> AUTH
     GW --> TENANT
@@ -94,6 +97,7 @@ graph TD
     GW --> MOD
     GW --> ANALYT
     GW -- "WSS (STOMP)" --> RT
+    GW --> USER
 
     TENANT -. "REST: create owner / verify user" .-> AUTH
     INTEG -. "gRPC: get tenant/channel config" .-> TENANT
@@ -131,6 +135,7 @@ graph TD
     MOD -. "rate counter" .-> REDIS
     ANALYT --- DB_ANALYT
     NOTI --- DB_NOTI
+    USER --- DB_USER
     ROUT --- REDIS
     RT --- REDIS
 ```
@@ -154,6 +159,7 @@ graph TD
 | M10 — Realtime Delivery | `websocket-service` | M07, M09 | ✅ M10 completed (MOD-REAL-01 to 05) |
 | M11 — Analytics & Reporting | `analytics-service` | M07, M02 | ⏳ Chờ |
 | M12 — Notification | `notification-service` | M07, M10 | ⏳ Chờ |
+| M13 — User Service | `user-service` | M00 | 🔄 MOD-USR-01 done |
 
 ---
 
@@ -228,6 +234,14 @@ graph TD
 | MOD-IAM-08 | Get Current Profile | Giải mã JWT → trả về user info, roles, permissions, tenants | Token hết hạn → 401; Token blacklisted → 401 |
 
 **NFR M01:** API đăng ký < 500ms (email gửi async); Password hash bắt buộc; Timing Attack resistant.
+
+### M13 — User Service
+
+| Mã | Chức năng | Business Rules nổi bật | Edge Cases |
+|---|---|---|---|
+| MOD-USR-01 | Quản lý Hồ sơ cá nhân | Password hash, XSS protection, update publish event | Khóa tài khoản sau 5 lần sai mật khẩu |
+
+**NFR M13:** Profile update < 200ms; Đảm bảo consistency với hệ thống qua Kafka.
 
 ### M02 — Tenant & Organization
 
