@@ -1,0 +1,55 @@
+server:
+  port: 8089
+
+spring:
+  application:
+    name: notification-service
+
+  config:
+    import: "optional:configserver:http://localhost:8888/"
+
+  # ── Kafka Consumer ──
+  kafka:
+    consumer:
+      bootstrap-servers: localhost:9092
+      group-id: notification-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.omnichat.*"
+
+  # ── Gmail SMTP ──
+  # Dùng Google App Password (16 ký tự), không dùng mật khẩu Gmail thường
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:your-gmail@gmail.com}
+    password: ${MAIL_PASSWORD:your-app-password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+# ── App config ──
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+
+# ── Eureka ──
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:admin@localhost:8761/eureka/
+
+# ── Actuator ──
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always

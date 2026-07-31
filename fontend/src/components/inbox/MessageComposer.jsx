@@ -108,7 +108,7 @@ export const MessageComposer = ({
             disabled={!message.trim() || disabled || isLoading}
             isLoading={isLoading}
             size="sm"
-            className="flex-shrink-0"
+            className="flex-shrink-0"c
           >
             <SendIcon className="h-4 w-4" />
           </Button>

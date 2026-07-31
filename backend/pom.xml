@@ -38,6 +38,7 @@
         <module>auth-service</module>
         <module>tenant-service</module>
         <module>dummy-service</module>
+        <module>notification-service</module>
     </modules>
 
     <dependencyManagement>
