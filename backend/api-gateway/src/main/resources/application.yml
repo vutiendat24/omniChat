@@ -92,3 +92,8 @@ resilience4j:
 
 jwt:
   public-key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoesVY2VUdG+RBvXmD/emuNwqdoODbsNXnHyEUDGYnW42n83ab7qx29LAG1kxXIqgPrNu59zL4WcxBoeelNVhE3qt8tqruoxD04jbZV9DJ89iwPXkt5YldWmJ50qxpPC5hSpKBrQetG4eu5mHgdVzkTCNVnvS27cmVF7sLQZaNwhlkQEZ6g14yqyRMMMgHmKnS0otcn7NLJnp243s2QTrY0mTCR9nUC8UIstz1eN/zoJr29l2Fij87EPjqPj/c2AtLp4LGuhzSOzMioBdLpC7pQwLeBUA1YTXyYrnnZROwDamhX16CfaQzZbBNP4y92pYfk706lBsOlMa/0BVfQEOywIDAQAB"
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:admin_password@localhost:8761/eureka/

@@ -59,12 +59,18 @@ graph TB
         M12["Notification"]
     end
 
+    subgraph "BC12: User Management"
+        M13["User Service"]
+    end
+
     subgraph "BC0: Platform Infrastructure"
         M00["Platform Infrastructure"]
     end
 
     M00 -.-> M01
-    M01 --> M02
+    M00 -.-> M13
+    M01 --> M13
+    M13 --> M02
     M01 --> M03
     M01 --> M04
     M03 --> M07
@@ -88,7 +94,7 @@ graph TB
 | # | Tên Module | Bounded Context | Mục tiêu | Phạm vi trách nhiệm (LÀM gì) | KHÔNG làm gì | Phụ thuộc |
 |---|---|---|---|---|---|---|
 | M00 | **Platform Infrastructure** | BC0: Platform Infrastructure | Cung cấp nền tảng kỹ thuật chung (config, discovery, gateway, message broker) để tất cả module khác hoạt động | Config Server tập trung, Service Discovery, API Gateway (routing, rate limiting, JWT filter), CORS, Message Broker setup (Kafka/RabbitMQ) | Không chứa business logic; không xử lý dữ liệu nghiệp vụ | Không phụ thuộc module nào |
-| M01 | **Identity & Access** | BC1: Identity & Access | Xác thực người dùng, phát hành/xác thực JWT, phân quyền RBAC | Đăng ký/đăng nhập, JWT (issue, refresh, introspect, blacklist), quản lý Role/Permission, Google OAuth2 SSO | Không quản lý tenant/shop; không quản lý kênh mạng xã hội | M00 (Platform Infrastructure) |
+| M01 | **Identity & Access** | BC1: Identity & Access | Xác thực người dùng, phát hành/xác thực JWT | Đăng ký/đăng nhập, JWT (issue, refresh, introspect, blacklist), Google OAuth2 SSO | Không quản lý role/permission, không quản lý thông tin profile chi tiết | M00 (Platform Infrastructure), M13 (User Service) |
 | M02 | **Tenant & Organization** | BC2: Tenant & Organization | Quản lý cấu trúc tổ chức multi-tenant: shop, team, cấu hình tenant | CRUD Tenant/Shop, quản lý Team trong tenant, gán user vào team/tenant, cấu hình nghiệp vụ theo tenant (giờ làm việc, SLA policy) | Không xác thực user; không quản lý permission hệ thống | M01 (Identity & Access) |
 | M03 | **Channel Integration** | BC3: Channel Integration | Kết nối OAuth2 với nền tảng messaging 1-1 (Facebook Messenger, Zalo OA, TikTok, Instagram DM); nhận webhook inbound; gửi tin nhắn outbound | Luồng OAuth2 connect/disconnect kênh, nhận & verify webhook, chuẩn hóa tin nhắn inbound thành format chung, gửi outbound qua Platform API, auto-refresh token | Không xử lý livestream; không lưu hội thoại; không phân bổ hội thoại | M01 (Identity & Access), M02 (Tenant & Organization) |
 | M04 | **Livestream Connector** | BC4: Livestream Aggregation | Kết nối và duy trì kết nối realtime tới các nền tảng livestream (TikTok Live, Facebook Live, Shopee Live, YouTube Live) | Quản lý phiên livestream (bắt đầu/kết thúc), kết nối API/WebSocket tới từng nền tảng livestream, nhận raw chat/comment stream, chuẩn hóa thành format chung, quản lý vòng đời token livestream | Không lọc spam; không thống kê; không gửi reply (delegate cho module khác); không xử lý tin nhắn 1-1 | M01 (Identity & Access), M02 (Tenant & Organization) |
@@ -100,6 +106,7 @@ graph TB
 | M10 | **Realtime Delivery** | BC9: Realtime Delivery | Push event realtime tới giao diện admin/agent qua WebSocket | Duy trì kết nối WebSocket/STOMP, push tin nhắn mới/hội thoại mới/assignment notification, broadcast livestream chat tới UI, quản lý session, multi-instance broadcast qua Redis Pub/Sub | Không chứa business logic; không lưu dữ liệu persistent; không xử lý tin nhắn | M07 (Conversation & Inbox), M09 (Routing & Assignment) |
 | M11 | **Analytics & Reporting** | BC10: Analytics & Reporting | Thống kê tương tác realtime, báo cáo hiệu suất agent, phân tích kênh & phiên livestream | Dashboard realtime (số comment/phút, viewer count, sentiment), báo cáo theo kênh/agent/thời gian, thống kê SLA, export báo cáo, so sánh hiệu suất giữa các phiên livestream | Không thu thập dữ liệu trực tiếp từ nền tảng (nhận qua event); không phân bổ hội thoại | M07 (Conversation & Inbox), M02 (Tenant & Organization) |
 | M12 | **Notification** | BC11: Notification | Gửi thông báo cho agent/admin khi có sự kiện quan trọng | Thông báo khi có hội thoại mới, SLA sắp breach, agent được assign, phiên livestream bắt đầu, cảnh báo spike comment; hỗ trợ kênh thông báo (in-app, email, push notification) | Không lưu hội thoại; không xử lý logic nghiệp vụ | M07 (Conversation & Inbox), M10 (Realtime Delivery) |
+| M13 | **User Service** | BC12: User Management | Quản lý vòng đời User, hồ sơ nhân sự, phân quyền hệ thống (RBAC) và Role Hierarchy | Quản lý User Profile, Role, Permission, Role Hierarchy, Workspace Member, Phân quyền thao tác, Xóa mềm (Soft Delete) | Không cấp phát JWT (do M01 làm), không quản lý cấu hình Tenant | M00 (Platform Infrastructure) |
 
 ---
 
@@ -108,8 +115,8 @@ graph TB
 | Module | Phụ thuộc trực tiếp |
 |---|---|
 | M00 — Platform Infrastructure | *(không có)* |
-| M01 — Identity & Access | M00 |
-| M02 — Tenant & Organization | M01 |
+| M01 — Identity & Access | M00, M13 |
+| M02 — Tenant & Organization | M13 |
 | M03 — Channel Integration | M01, M02 |
 | M04 — Livestream Connector | M01, M02 |
 | M05 — Livestream Chat Aggregator | M04 |
@@ -120,6 +127,7 @@ graph TB
 | M10 — Realtime Delivery | M07, M09 |
 | M11 — Analytics & Reporting | M07, M02 |
 | M12 — Notification | M07, M10 |
+| M13 — User Service | M00 |
 
 ---
 
@@ -139,6 +147,7 @@ graph TB
 | Realtime Delivery (`websocket-service`) | M10 — Realtime Delivery | Mở rộng: broadcast thêm livestream chat |
 | *(chưa có)* | M11 — Analytics & Reporting | **MỚI** — thống kê realtime |
 | *(chưa có)* | M12 — Notification | **MỚI** — thông báo đa kênh |
+| User Management *(trong auth-service)* | M13 — User Service | **MỚI** — tách quản lý Role, Permission, User Profile ra service độc lập |
 | Platform Infrastructure | M00 — Platform Infrastructure | Giữ nguyên |
 
 ---

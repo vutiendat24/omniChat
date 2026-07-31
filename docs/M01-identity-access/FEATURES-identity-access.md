@@ -1,5 +1,7 @@
 # Module: M01 - Identity & Access
 
+> 📖 **Tài liệu tham khảo:** Xem thêm [Chiến lược quản lý tài khoản (Account Management Strategy)](../M13-user-service/ACCOUNT_MANAGEMENT_STRATEGY.md) để hiểu rõ về phân cấp Role (Hierarchy) và RBAC.
+
 ## Danh sách chức năng
 
 ### 1. Đăng ký tài khoản
@@ -32,17 +34,6 @@
 - **Mô tả ngắn:** Chấm dứt phiên làm việc của người dùng bằng cách hủy bỏ Refresh Token hiện tại và đưa Access Token vào danh sách đen (Blacklist) để không thể sử dụng tiếp.
 - **Actor:** Người dùng.
 
-### 6. Quản lý Vai trò
-- **Mã chức năng:** MOD-IAM-06
-- **Tên chức năng:** Quản lý Vai trò (Role Management)
-- **Mô tả ngắn:** Khởi tạo, cập nhật và xóa các vai trò (Role) trong hệ thống (VD: Super Admin, Shop Owner, Agent) làm cơ sở để phân quyền.
-- **Actor:** Super Admin.
-
-### 7. Phân quyền RBAC
-- **Mã chức năng:** MOD-IAM-07
-- **Tên chức năng:** Quản lý Phân quyền (Permission / RBAC Management)
-- **Mô tả ngắn:** Định nghĩa các quyền hạn cụ thể (Permissions) và gán các quyền này vào từng Vai trò (Role) để kiểm soát quyền truy cập tài nguyên.
-- **Actor:** Super Admin.
 
 ### 8. Lấy thông tin cá nhân
 - **Mã chức năng:** MOD-IAM-08

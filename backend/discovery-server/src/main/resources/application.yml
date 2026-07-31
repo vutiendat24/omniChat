@@ -25,7 +25,7 @@ eureka:
     
     # Interval to check for expired instances (in milliseconds). Default is 60000 (1 min).
     # Set to 5 seconds for fast dev feedback.
-    eviction-interval-timer-in-ms: 5000 
+    eviction-interval-timer-in-ms: 120000
     
     # Wait time before starting registry syncing. Useful when peering multiple Eureka nodes.
     wait-time-in-ms-when-sync-empty: 0

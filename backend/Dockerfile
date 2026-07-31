@@ -32,6 +32,7 @@ COPY customer-service/pom.xml customer-service/pom.xml
 COPY integration-service/pom.xml integration-service/pom.xml
 COPY websocket-service/pom.xml websocket-service/pom.xml
 COPY api-gateway/pom.xml api-gateway/pom.xml
+COPY notification-service/pom.xml notification-service/pom.xml
 
 # Download all dependencies (cached unless POM changes)
 RUN ./mvnw dependency:go-offline -B -q 2>/dev/null || true
