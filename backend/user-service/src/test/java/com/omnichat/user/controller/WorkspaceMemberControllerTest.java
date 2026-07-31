@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(SpringExtension.class)
@@ -141,5 +142,72 @@ public class WorkspaceMemberControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@omnichat.com")
+    void shouldChangeRoleSuccessfullyByAdmin() throws Exception {
+        Role agentRole = roleRepository.save(Role.builder().workspaceId(1L).name("Agent").level(20).isSystem(false).build());
+        User agentUser = userRepository.save(User.builder().email("agent@omnichat.com").password("Pass@123").fullName("Agent").build());
+        workspaceMemberRepository.save(WorkspaceMember.builder().workspaceId(1L).user(agentUser).role(agentRole).build());
+
+        com.omnichat.user.dto.ChangeRoleReq req = new com.omnichat.user.dto.ChangeRoleReq(managerRole.getId());
+        
+        mockMvc.perform(patch("/api/v1/workspaces/1/members/" + agentUser.getId() + "/role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@omnichat.com")
+    void shouldRejectChangeSelfRole() throws Exception {
+        com.omnichat.user.dto.ChangeRoleReq req = new com.omnichat.user.dto.ChangeRoleReq(ownerRole.getId());
+        
+        mockMvc.perform(patch("/api/v1/workspaces/1/members/" + adminUser.getId() + "/role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "manager@omnichat.com")
+    void shouldRejectChangeRoleIfTargetLevelHigherOrEqual() throws Exception {
+        com.omnichat.user.dto.ChangeRoleReq req = new com.omnichat.user.dto.ChangeRoleReq(managerRole.getId());
+        
+        mockMvc.perform(patch("/api/v1/workspaces/1/members/" + adminUser.getId() + "/role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "manager@omnichat.com")
+    void shouldRejectChangeRoleIfNewRoleLevelHigherOrEqual() throws Exception {
+        Role agentRole = roleRepository.save(Role.builder().workspaceId(1L).name("Agent").level(20).isSystem(false).build());
+        User agentUser = userRepository.save(User.builder().email("agent@omnichat.com").password("Pass@123").fullName("Agent").build());
+        workspaceMemberRepository.save(WorkspaceMember.builder().workspaceId(1L).user(agentUser).role(agentRole).build());
+
+        com.omnichat.user.dto.ChangeRoleReq req = new com.omnichat.user.dto.ChangeRoleReq(adminRole.getId());
+        
+        mockMvc.perform(patch("/api/v1/workspaces/1/members/" + agentUser.getId() + "/role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@omnichat.com")
+    void shouldRejectAssignOwnerRole() throws Exception {
+        Role agentRole = roleRepository.save(Role.builder().workspaceId(1L).name("Agent").level(20).isSystem(false).build());
+        User agentUser = userRepository.save(User.builder().email("agent@omnichat.com").password("Pass@123").fullName("Agent").build());
+        workspaceMemberRepository.save(WorkspaceMember.builder().workspaceId(1L).user(agentUser).role(agentRole).build());
+
+        com.omnichat.user.dto.ChangeRoleReq req = new com.omnichat.user.dto.ChangeRoleReq(ownerRole.getId());
+        
+        mockMvc.perform(patch("/api/v1/workspaces/1/members/" + agentUser.getId() + "/role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
     }
 }

@@ -127,4 +127,58 @@ public class WorkspaceMemberController {
 
         return ResponseEntity.ok().build();
     }
+
+    @PatchMapping("/{userId}/role")
+    public ResponseEntity<?> changeRole(@PathVariable("id") Long workspaceId,
+                                        @PathVariable("userId") Long targetUserId,
+                                        @Valid @RequestBody com.omnichat.user.dto.ChangeRoleReq req,
+                                        Authentication authentication) {
+        String actorEmail = authentication.getName();
+        User actorUser = userRepository.findByEmail(actorEmail).orElse(null);
+        if (actorUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (actorUser.getId().equals(targetUserId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Không thể tự thay đổi Role của chính mình"));
+        }
+
+        WorkspaceMember actorMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, actorUser.getId()).orElse(null);
+        if (actorMember == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        WorkspaceMember targetMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, targetUserId).orElse(null);
+        if (targetMember == null) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Thành viên không tồn tại trong workspace"));
+        }
+
+        Role newRole = roleRepository.findById(req.getNewRoleId()).orElse(null);
+        if (newRole == null || !newRole.getWorkspaceId().equals(workspaceId)) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Role mới không hợp lệ"));
+        }
+
+        if (newRole.getLevel() >= 100) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Không thể cấp Role OWNER qua API này"));
+        }
+
+        if (actorMember.getRole().getLevel() <= targetMember.getRole().getLevel()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Không đủ quyền tác động lên thành viên này"));
+        }
+
+        if (actorMember.getRole().getLevel() <= newRole.getLevel()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Không đủ quyền cấp Role mức này"));
+        }
+
+        targetMember.setRole(newRole);
+        workspaceMemberRepository.save(targetMember);
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("workspaceId", workspaceId);
+        event.put("userId", targetUserId);
+        event.put("newRoleId", newRole.getId());
+        kafkaTemplate.send("omnichat.user.events", "UserRoleChangedEvent", event);
+
+        return ResponseEntity.ok().build();
+    }
 }
