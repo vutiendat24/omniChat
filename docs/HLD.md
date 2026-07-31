@@ -159,7 +159,7 @@ graph TD
 | M10 — Realtime Delivery | `websocket-service` | M07, M09 | ✅ M10 completed (MOD-REAL-01 to 05) |
 | M11 — Analytics & Reporting | `analytics-service` | M07, M02 | ⏳ Chờ |
 | M12 — Notification | `notification-service` | M07, M10 | ⏳ Chờ |
-| M13 — User Service | `user-service` | M00 | ✅ MOD-USR-01, MOD-USR-02, MOD-USR-03, MOD-USR-04, MOD-USR-05 done |
+| M13 — User Service | `user-service` | M00 | ✅ MOD-USR-01 -> MOD-USR-06 done (All M13 completed) |
 
 ---
 
@@ -244,6 +244,7 @@ graph TD
 | MOD-USR-03 | Quản lý Vai trò (Role) | Mức level của role mới tạo phải < level của Actor | Role hệ thống (is_system=true) không cho phép sửa/xóa; Tranh chấp tên Role qua Unique Constraint |
 | MOD-USR-04 | Phân quyền RBAC (Permission) | Cấp quyền theo Principle of Least Privilege | Đồng bộ qua Redis Cache để AuthFilter bắt được khi Permission thay đổi |
 | MOD-USR-05 | Gán và Đổi Vai trò | Phải check quyền (Hierarchy check: Actor > Target_Current & Actor > Target_New) | Không cấp role OWNER; cấm tự đổi role; Gửi event cập nhật WebSocket |
+| MOD-USR-06 | Chuyển quyền Chủ sở hữu | Yêu cầu xác thực mật khẩu; Swap vai trò (New Owner = Level 100, Old = 80) | Chỉ Chủ sở hữu mới có quyền thực thi, chạy trong 1 Transaction |
 
 **NFR M13:** Profile update < 200ms; Đảm bảo consistency với hệ thống qua Kafka.
 

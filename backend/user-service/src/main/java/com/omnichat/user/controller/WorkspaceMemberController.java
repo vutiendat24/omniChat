@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -27,6 +28,7 @@ public class WorkspaceMemberController {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final PasswordEncoder passwordEncoder;
 
     @PostMapping("/invite")
     public ResponseEntity<?> inviteMember(@PathVariable("id") Long workspaceId,
@@ -178,6 +180,64 @@ public class WorkspaceMemberController {
         event.put("userId", targetUserId);
         event.put("newRoleId", newRole.getId());
         kafkaTemplate.send("omnichat.user.events", "UserRoleChangedEvent", event);
+
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/transfer-ownership")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> transferOwnership(@PathVariable("id") Long workspaceId,
+                                               @Valid @RequestBody com.omnichat.user.dto.TransferOwnershipReq req,
+                                               Authentication authentication) {
+        String actorEmail = authentication.getName();
+        User actorUser = userRepository.findByEmail(actorEmail).orElse(null);
+        if (actorUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (!passwordEncoder.matches(req.getPassword(), actorUser.getPassword())) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Mật khẩu không chính xác"));
+        }
+
+        WorkspaceMember actorMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, actorUser.getId()).orElse(null);
+        if (actorMember == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        if (actorMember.getRole().getLevel() < 100 || !actorMember.getRole().isSystem()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Chỉ Owner mới có quyền chuyển nhượng"));
+        }
+
+        if (actorUser.getId().equals(req.getNewOwnerUserId())) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Không thể tự chuyển nhượng cho chính mình"));
+        }
+
+        WorkspaceMember targetMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, req.getNewOwnerUserId()).orElse(null);
+        if (targetMember == null || targetMember.getStatus() != MemberStatus.ACTIVE) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Người nhận chuyển nhượng phải đang là thành viên ACTIVE"));
+        }
+
+        Role adminRole = roleRepository.findByWorkspaceId(workspaceId).stream()
+                .filter(r -> r.isSystem() && r.getLevel() == 80)
+                .findFirst().orElse(null);
+
+        if (adminRole == null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ErrorResponse("Không tìm thấy Admin Role để hạ cấp"));
+        }
+
+        Role ownerRole = actorMember.getRole();
+
+        actorMember.setRole(adminRole);
+        targetMember.setRole(ownerRole);
+
+        workspaceMemberRepository.save(actorMember);
+        workspaceMemberRepository.save(targetMember);
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("workspaceId", workspaceId);
+        event.put("oldOwnerId", actorUser.getId());
+        event.put("newOwnerId", targetMember.getUser().getId());
+        kafkaTemplate.send("omnichat.user.events", "OwnershipTransferredEvent", event);
 
         return ResponseEntity.ok().build();
     }

@@ -64,6 +64,9 @@ public class WorkspaceMemberControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
     @BeforeEach
     void setUp() {
         jdbcTemplate.execute("DELETE FROM workspace_members");
@@ -74,9 +77,9 @@ public class WorkspaceMemberControllerTest {
         adminRole = roleRepository.save(Role.builder().workspaceId(1L).name("Admin").level(80).isSystem(true).build());
         managerRole = roleRepository.save(Role.builder().workspaceId(1L).name("Manager").level(60).isSystem(true).build());
 
-        ownerUser = userRepository.save(User.builder().email("owner@omnichat.com").password("Pass@123").fullName("Owner").build());
-        adminUser = userRepository.save(User.builder().email("admin@omnichat.com").password("Pass@123").fullName("Admin").build());
-        managerUser = userRepository.save(User.builder().email("manager@omnichat.com").password("Pass@123").fullName("Manager").build());
+        ownerUser = userRepository.save(User.builder().email("owner@omnichat.com").password(passwordEncoder.encode("Pass@123")).fullName("Owner").build());
+        adminUser = userRepository.save(User.builder().email("admin@omnichat.com").password(passwordEncoder.encode("Pass@123")).fullName("Admin").build());
+        managerUser = userRepository.save(User.builder().email("manager@omnichat.com").password(passwordEncoder.encode("Pass@123")).fullName("Manager").build());
 
         ownerMember = workspaceMemberRepository.save(WorkspaceMember.builder().workspaceId(1L).user(ownerUser).role(ownerRole).build());
         adminMember = workspaceMemberRepository.save(WorkspaceMember.builder().workspaceId(1L).user(adminUser).role(adminRole).build());
@@ -209,5 +212,49 @@ public class WorkspaceMemberControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "owner@omnichat.com")
+    void shouldTransferOwnershipSuccessfully() throws Exception {
+        com.omnichat.user.dto.TransferOwnershipReq req = new com.omnichat.user.dto.TransferOwnershipReq(adminUser.getId(), "Pass@123");
+
+        mockMvc.perform(post("/api/v1/workspaces/1/members/transfer-ownership")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "owner@omnichat.com")
+    void shouldRejectTransferOwnershipWithWrongPassword() throws Exception {
+        com.omnichat.user.dto.TransferOwnershipReq req = new com.omnichat.user.dto.TransferOwnershipReq(adminUser.getId(), "WrongPass");
+
+        mockMvc.perform(post("/api/v1/workspaces/1/members/transfer-ownership")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@omnichat.com")
+    void shouldRejectTransferOwnershipIfNotOwner() throws Exception {
+        com.omnichat.user.dto.TransferOwnershipReq req = new com.omnichat.user.dto.TransferOwnershipReq(managerUser.getId(), "Pass@123");
+
+        mockMvc.perform(post("/api/v1/workspaces/1/members/transfer-ownership")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "owner@omnichat.com")
+    void shouldRejectTransferOwnershipToSelf() throws Exception {
+        com.omnichat.user.dto.TransferOwnershipReq req = new com.omnichat.user.dto.TransferOwnershipReq(ownerUser.getId(), "Pass@123");
+
+        mockMvc.perform(post("/api/v1/workspaces/1/members/transfer-ownership")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
     }
 }
