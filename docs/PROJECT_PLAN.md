@@ -94,8 +94,8 @@
 
 ## 14. M12 - Notification
 *Phụ thuộc: M07, M10*
-- [ ] MOD-NOTIF-01: Gửi thông báo In-app (In-app Notification) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)
-- [ ] MOD-NOTIF-02: Gửi thông báo Email (Email Notification) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)
+- [x] MOD-NOTIF-01: Gửi thông báo In-app (In-app Notification) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)
+- [x] MOD-NOTIF-02: Gửi thông báo Email (Email Notification) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)
 - [ ] MOD-NOTIF-03: Gửi thông báo đẩy (Web/Mobile Push Notification) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)
 - [ ] MOD-NOTIF-04: Cấu hình tùy chọn thông báo (Notification Preferences) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)
 - [ ] MOD-NOTIF-05: Quản lý Mẫu thông báo (Notification Templates) 🔗 [Chi tiết](M12-notification/REQUIREMENTS-notification.md)

@@ -158,7 +158,7 @@ graph TD
 | M09 — Routing & Assignment | `routing-service` | M01, M07 | ⏳ Chờ |
 | M10 — Realtime Delivery | `websocket-service` | M07, M09 | ✅ M10 completed (MOD-REAL-01 to 05) |
 | M11 — Analytics & Reporting | `analytics-service` | M07, M02 | ⏳ Chờ |
-| M12 — Notification | `notification-service` | M07, M10 | ⏳ Chờ |
+| M12 — Notification | `notification-service` | M07, M10 | 🔄 MOD-NOTIF-01, 02 done |
 | M13 — User Service | `user-service` | M00 | ✅ MOD-USR-01 -> MOD-USR-06 done (All M13 completed) |
 
 ---

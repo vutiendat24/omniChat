@@ -8,6 +8,22 @@ spring:
   config:
     import: "optional:configserver:http://localhost:8888/"
 
+  # ── Database ──
+  datasource:
+    url: jdbc:mysql://localhost:3307/notification_service?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_ROOT_PASSWORD:password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
   # ── Kafka Consumer ──
   kafka:
     consumer:
